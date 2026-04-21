@@ -1,0 +1,660 @@
+/* 基础滚动条美化 */
+::-webkit-scrollbar { width: 8px; height: 8px; }
+::-webkit-scrollbar-track { background: rgba(255,255,255,0.04); }
+::-webkit-scrollbar-thumb { background: rgba(245,194,66,0.3); border-radius: 4px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(245,194,66,0.6); }
+
+/* 导航按钮 */
+.nav-btn {
+  padding: 0.5rem 1rem;
+  border-radius: 0.5rem;
+  color: rgba(255, 255, 255, 0.7);
+  transition: all 0.2s;
+}
+.nav-btn:hover {
+  background: rgba(245, 194, 66, 0.1);
+  color: #f5c242;
+}
+.nav-btn.active {
+  background: linear-gradient(135deg, rgba(245, 194, 66, 0.2), rgba(176, 42, 55, 0.2));
+  color: #f5c242;
+  border: 1px solid rgba(245, 194, 66, 0.4);
+}
+
+/* 统计卡片 */
+.stat-card {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 0.75rem;
+  padding: 0.75rem 1rem;
+  backdrop-filter: blur(4px);
+  transition: all 0.2s;
+}
+.stat-card:hover {
+  border-color: rgba(245, 194, 66, 0.4);
+  background: rgba(255, 255, 255, 0.09);
+}
+
+/* 品质筛选 chip */
+.quality-chip, .cat-chip, .rank-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.9rem;
+  border-radius: 9999px;
+  font-size: 0.8rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.quality-chip:hover, .cat-chip:hover {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(245, 194, 66, 0.4);
+}
+.quality-chip.active, .cat-chip.active {
+  background: linear-gradient(135deg, #f5c242, #e3a93c);
+  color: #0b1020;
+  border-color: #f5c242;
+  font-weight: 600;
+}
+.rank-tab {
+  border: none;
+  background: transparent;
+  border-radius: 0.5rem;
+}
+.rank-tab.active {
+  background: linear-gradient(135deg, #f5c242, #e3a93c);
+  color: #0b1020;
+  font-weight: 600;
+}
+
+.dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+.dot.legend { background: #ff4d4d; box-shadow: 0 0 6px #ff4d4d; }
+.dot.epic { background: #b266ff; box-shadow: 0 0 6px #b266ff; }
+.dot.rare { background: #4da6ff; box-shadow: 0 0 6px #4da6ff; }
+.dot.common { background: #9ca3af; }
+
+/* =========================
+   荣誉卡片 —— 不同品质底色与边框
+   ========================= */
+.honor-card {
+  position: relative;
+  border-radius: 1rem;
+  padding: 1rem;
+  cursor: pointer;
+  overflow: hidden;
+  transition: transform 0.25s, box-shadow 0.25s;
+  border: 2px solid transparent;
+  min-height: 200px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  text-align: center;
+}
+.honor-card:hover {
+  transform: translateY(-4px) scale(1.02);
+}
+.honor-card::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  opacity: 0.5;
+  z-index: 0;
+  transition: opacity 0.3s;
+}
+.honor-card:hover::before { opacity: 0.8; }
+.honor-card > * { position: relative; z-index: 1; }
+
+/* 传说 —— 红金 */
+.honor-card.legend {
+  border-color: #ff4d4d;
+  background: linear-gradient(160deg, #3a0c14 0%, #5a1a20 50%, #2a0a10 100%);
+  box-shadow: 0 4px 20px rgba(255, 77, 77, 0.2), inset 0 0 20px rgba(245, 194, 66, 0.15);
+}
+.honor-card.legend::before {
+  background: radial-gradient(circle at 50% 30%, rgba(245, 194, 66, 0.35), transparent 65%);
+}
+.honor-card.legend:hover {
+  box-shadow: 0 8px 30px rgba(255, 77, 77, 0.45), inset 0 0 30px rgba(245, 194, 66, 0.25);
+}
+
+/* 史诗 —— 紫 */
+.honor-card.epic {
+  border-color: #b266ff;
+  background: linear-gradient(160deg, #2a1245 0%, #3b1a66 50%, #1a0c2e 100%);
+  box-shadow: 0 4px 20px rgba(178, 102, 255, 0.2), inset 0 0 20px rgba(178, 102, 255, 0.15);
+}
+.honor-card.epic::before {
+  background: radial-gradient(circle at 50% 30%, rgba(178, 102, 255, 0.3), transparent 65%);
+}
+.honor-card.epic:hover {
+  box-shadow: 0 8px 30px rgba(178, 102, 255, 0.45);
+}
+
+/* 稀有 —— 蓝 */
+.honor-card.rare {
+  border-color: #4da6ff;
+  background: linear-gradient(160deg, #0f2642 0%, #163a66 50%, #0a1a30 100%);
+  box-shadow: 0 4px 20px rgba(77, 166, 255, 0.2), inset 0 0 20px rgba(77, 166, 255, 0.12);
+}
+.honor-card.rare::before {
+  background: radial-gradient(circle at 50% 30%, rgba(77, 166, 255, 0.3), transparent 65%);
+}
+.honor-card.rare:hover {
+  box-shadow: 0 8px 30px rgba(77, 166, 255, 0.45);
+}
+
+/* 普通 —— 灰 */
+.honor-card.common {
+  border-color: #6b7280;
+  background: linear-gradient(160deg, #1f2433 0%, #2a3040 50%, #161a26 100%);
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+}
+.honor-card.common::before {
+  background: radial-gradient(circle at 50% 30%, rgba(156, 163, 175, 0.2), transparent 65%);
+}
+
+/* 徽章图标（卡片内） */
+.honor-icon {
+  width: 72px;
+  height: 72px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 2.2rem;
+  margin-bottom: 0.6rem;
+  position: relative;
+}
+.honor-icon::after {
+  content: '';
+  position: absolute;
+  inset: -6px;
+  border-radius: 50%;
+  border: 2px solid;
+  opacity: 0.5;
+}
+.honor-card.legend .honor-icon {
+  background: radial-gradient(circle, #f5c242, #b02a37);
+  color: #fff;
+  box-shadow: 0 0 16px rgba(245, 194, 66, 0.6);
+}
+.honor-card.legend .honor-icon::after { border-color: #f5c242; }
+
+.honor-card.epic .honor-icon {
+  background: radial-gradient(circle, #d9a6ff, #6b2dbd);
+  color: #fff;
+  box-shadow: 0 0 14px rgba(178, 102, 255, 0.55);
+}
+.honor-card.epic .honor-icon::after { border-color: #b266ff; }
+
+.honor-card.rare .honor-icon {
+  background: radial-gradient(circle, #8fc6ff, #2b6bbf);
+  color: #fff;
+  box-shadow: 0 0 12px rgba(77, 166, 255, 0.5);
+}
+.honor-card.rare .honor-icon::after { border-color: #4da6ff; }
+
+.honor-card.common .honor-icon {
+  background: radial-gradient(circle, #9ca3af, #4b5563);
+  color: #fff;
+}
+.honor-card.common .honor-icon::after { border-color: #9ca3af; }
+
+/* 品质徽标 */
+.quality-tag {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  font-size: 0.65rem;
+  padding: 2px 8px;
+  border-radius: 9999px;
+  font-weight: 600;
+  letter-spacing: 0.05em;
+  backdrop-filter: blur(4px);
+}
+.honor-card.legend .quality-tag { background: rgba(245, 194, 66, 0.85); color: #3a0c14; }
+.honor-card.epic .quality-tag { background: rgba(178, 102, 255, 0.85); color: #1a0c2e; }
+.honor-card.rare .quality-tag { background: rgba(77, 166, 255, 0.85); color: #0a1a30; }
+.honor-card.common .quality-tag { background: rgba(156, 163, 175, 0.8); color: #1f2433; }
+
+/* 传说闪烁动效 */
+.honor-card.legend .honor-icon {
+  animation: legendGlow 2.4s ease-in-out infinite alternate;
+}
+@keyframes legendGlow {
+  from { box-shadow: 0 0 14px rgba(245, 194, 66, 0.4); }
+  to { box-shadow: 0 0 26px rgba(245, 194, 66, 0.9), 0 0 40px rgba(255, 77, 77, 0.5); }
+}
+
+/* =========================
+   小徽章（带 hover tooltip）
+   ========================= */
+.mini-badge {
+  position: relative;
+  width: 48px;
+  height: 48px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 1.2rem;
+  cursor: pointer;
+  transition: transform 0.2s;
+  border: 2px solid transparent;
+}
+.mini-badge:hover { transform: scale(1.15); z-index: 5; }
+.mini-badge.legend {
+  background: radial-gradient(circle, #f5c242, #b02a37);
+  border-color: #f5c242;
+  color: #fff;
+  box-shadow: 0 0 10px rgba(245, 194, 66, 0.6);
+}
+.mini-badge.epic {
+  background: radial-gradient(circle, #d9a6ff, #6b2dbd);
+  border-color: #b266ff;
+  color: #fff;
+  box-shadow: 0 0 8px rgba(178, 102, 255, 0.5);
+}
+.mini-badge.rare {
+  background: radial-gradient(circle, #8fc6ff, #2b6bbf);
+  border-color: #4da6ff;
+  color: #fff;
+}
+.mini-badge.common {
+  background: radial-gradient(circle, #9ca3af, #4b5563);
+  border-color: #9ca3af;
+  color: #fff;
+}
+
+/* Tooltip */
+#tooltip {
+  min-width: 200px;
+  animation: tipFade 0.15s ease-out;
+}
+@keyframes tipFade {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+/* =========================
+   排行榜 前三名
+   ========================= */
+.podium {
+  position: relative;
+  border-radius: 1rem;
+  padding: 1.2rem 0.8rem 1rem;
+  text-align: center;
+  overflow: hidden;
+  transition: transform 0.3s;
+}
+.podium:hover { transform: translateY(-4px); }
+.podium-1 {
+  background: linear-gradient(180deg, rgba(245, 194, 66, 0.25), rgba(176, 42, 55, 0.15) 80%, transparent);
+  border: 2px solid #f5c242;
+  box-shadow: 0 0 30px rgba(245, 194, 66, 0.3), inset 0 0 20px rgba(245, 194, 66, 0.1);
+  transform: scale(1.05);
+}
+.podium-2 {
+  background: linear-gradient(180deg, rgba(192, 192, 192, 0.2), transparent 80%);
+  border: 2px solid #c0c0c0;
+  box-shadow: 0 0 18px rgba(192, 192, 192, 0.2);
+}
+.podium-3 {
+  background: linear-gradient(180deg, rgba(205, 127, 50, 0.2), transparent 80%);
+  border: 2px solid #cd7f32;
+  box-shadow: 0 0 18px rgba(205, 127, 50, 0.2);
+}
+.podium-avatar {
+  border-radius: 50%;
+  overflow: hidden;
+  margin: 0 auto 0.6rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(255, 255, 255, 0.1);
+  position: relative;
+}
+.podium-1 .podium-avatar {
+  width: 110px; height: 110px;
+  border: 4px solid #f5c242;
+  box-shadow: 0 0 20px rgba(245, 194, 66, 0.5);
+}
+.podium-2 .podium-avatar {
+  width: 88px; height: 88px;
+  border: 4px solid #c0c0c0;
+}
+.podium-3 .podium-avatar {
+  width: 80px; height: 80px;
+  border: 4px solid #cd7f32;
+}
+.podium-crown {
+  position: absolute;
+  top: -14px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 1.5rem;
+}
+.podium-1 .podium-crown { color: #f5c242; font-size: 2rem; filter: drop-shadow(0 0 6px #f5c242); }
+.podium-2 .podium-crown { color: #c0c0c0; }
+.podium-3 .podium-crown { color: #cd7f32; }
+
+.podium-rank {
+  display: inline-block;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  line-height: 28px;
+  font-weight: 700;
+  font-size: 0.9rem;
+  margin-bottom: 0.4rem;
+}
+.podium-1 .podium-rank { background: #f5c242; color: #3a0c14; }
+.podium-2 .podium-rank { background: #c0c0c0; color: #1f2433; }
+.podium-3 .podium-rank { background: #cd7f32; color: #fff; }
+
+/* 排行列表行 */
+.rank-row {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  padding: 0.8rem 1.25rem;
+  align-items: center;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  transition: background 0.2s;
+}
+.rank-row:hover { background: rgba(245, 194, 66, 0.06); }
+.rank-row:last-child { border-bottom: none; }
+
+/* 详情弹窗 */
+#honorModal { display: none; }
+#honorModal.open { display: flex; }
+
+/* 动效入场 */
+@keyframes cardIn {
+  from { opacity: 0; transform: translateY(10px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+.honor-card { animation: cardIn 0.4s ease-out both; }
+
+@media (max-width: 640px) {
+  .podium-1 .podium-avatar { width: 80px; height: 80px; }
+  .podium-2 .podium-avatar, .podium-3 .podium-avatar { width: 64px; height: 64px; }
+  .honor-icon { width: 58px; height: 58px; font-size: 1.7rem; }
+}
+
+/* =========================
+   策划列表卡片 person-card
+   ========================= */
+.person-card {
+  position: relative;
+  display: block;
+  padding: 1rem 1.1rem;
+  border-radius: 1rem;
+  background: linear-gradient(160deg, rgba(255, 255, 255, 0.05), rgba(255, 255, 255, 0.02));
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  transition: all 0.3s;
+  overflow: hidden;
+  cursor: pointer;
+  color: inherit;
+  text-decoration: none;
+  animation: cardIn 0.4s ease-out both;
+}
+.person-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(245, 194, 66, 0.5);
+  box-shadow: 0 10px 30px rgba(245, 194, 66, 0.15),
+              inset 0 0 20px rgba(245, 194, 66, 0.05);
+}
+.person-card-bg {
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at 100% 0%, rgba(245, 194, 66, 0.15), transparent 50%);
+  opacity: 0;
+  transition: opacity 0.3s;
+  pointer-events: none;
+}
+.person-card:hover .person-card-bg { opacity: 1; }
+
+/* 小号徽章（列表卡片内展示） */
+.mini-badge-sm {
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.85rem;
+  border: 1.5px solid transparent;
+  color: #fff;
+  flex-shrink: 0;
+}
+.mini-badge-sm.legend {
+  background: radial-gradient(circle, #f5c242, #b02a37);
+  border-color: #f5c242;
+  box-shadow: 0 0 6px rgba(245, 194, 66, 0.6);
+}
+.mini-badge-sm.epic {
+  background: radial-gradient(circle, #d9a6ff, #6b2dbd);
+  border-color: #b266ff;
+}
+.mini-badge-sm.rare {
+  background: radial-gradient(circle, #8fc6ff, #2b6bbf);
+  border-color: #4da6ff;
+}
+.mini-badge-sm.common {
+  background: radial-gradient(circle, #9ca3af, #4b5563);
+  border-color: #9ca3af;
+}
+.mini-badge-sm.more {
+  background: rgba(255, 255, 255, 0.1);
+  border-color: rgba(255, 255, 255, 0.2);
+  color: rgba(255, 255, 255, 0.7);
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+
+/* 排行榜链接状态继承 */
+#rankList a.rank-row,
+#topThree a.podium {
+  color: inherit;
+  text-decoration: none;
+}
+#rankList a.rank-row { cursor: pointer; }
+#topThree a.podium { cursor: pointer; }
+
+/* 让导航使用 a 标签也有一致样式 */
+header .nav-btn { text-decoration: none; display: inline-flex; align-items: center; }
+
+/* =========================
+   个性签名编辑 + 管理按钮
+   ========================= */
+.edit-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.25rem 0.6rem;
+  border-radius: 9999px;
+  background: rgba(245, 194, 66, 0.12);
+  border: 1px solid rgba(245, 194, 66, 0.35);
+  color: #f5c242;
+  font-size: 0.75rem;
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.edit-btn:hover {
+  background: rgba(245, 194, 66, 0.25);
+  border-color: #f5c242;
+  transform: translateY(-1px);
+}
+.btn-save, .btn-cancel {
+  padding: 0.4rem 0.7rem;
+  border-radius: 0.5rem;
+  font-size: 0.8rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid transparent;
+}
+.btn-save {
+  background: linear-gradient(135deg, #f5c242, #e3a93c);
+  color: #0b1020;
+  font-weight: 600;
+}
+.btn-save:hover { filter: brightness(1.1); transform: translateY(-1px); }
+.btn-cancel {
+  background: rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.75);
+  border-color: rgba(255, 255, 255, 0.15);
+}
+.btn-cancel:hover {
+  background: rgba(255, 255, 255, 0.15);
+  color: #fff;
+}
+
+.quote-wrap #quoteEdit {
+  display: flex;
+}
+.quote-wrap #quoteEdit.hidden {
+  display: none;
+}
+
+/* 本人标签 */
+.self-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  margin-left: 6px;
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 600;
+  color: #22c55e;
+  background: rgba(34, 197, 94, 0.15);
+  border: 1px solid rgba(34, 197, 94, 0.4);
+  border-radius: 9999px;
+  vertical-align: middle;
+}
+
+.person-card.is-self {
+  border-color: rgba(34, 197, 94, 0.5);
+  box-shadow: 0 0 18px rgba(34, 197, 94, 0.15);
+}
+.person-card.is-self::after {
+  content: '我';
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: linear-gradient(135deg, #22c55e, #16a34a);
+  color: #fff;
+  font-size: 10px;
+  font-weight: 700;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 0 8px rgba(34, 197, 94, 0.6);
+  z-index: 2;
+}
+.rank-row.is-self,
+.podium.is-self {
+  position: relative;
+}
+.rank-row.is-self {
+  background: rgba(34, 197, 94, 0.08);
+}
+.podium.is-self {
+  outline: 2px dashed rgba(34, 197, 94, 0.5);
+  outline-offset: 2px;
+}
+
+/* 登录状态 */
+#loginStatus.logged-in {
+  border-color: rgba(34, 197, 94, 0.4);
+  background: rgba(34, 197, 94, 0.08);
+}
+
+/* =========================
+   徽章管理弹窗 —— 勾选卡片
+   ========================= */
+#badgeModal { display: none; }
+#badgeModal.flex { display: flex; }
+
+.badge-pick {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  padding: 0.65rem 0.8rem;
+  border-radius: 0.75rem;
+  background: rgba(255, 255, 255, 0.04);
+  border: 2px solid rgba(255, 255, 255, 0.08);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+.badge-pick:hover {
+  background: rgba(255, 255, 255, 0.08);
+  transform: translateY(-1px);
+}
+.badge-pick.picked {
+  background: rgba(245, 194, 66, 0.08);
+}
+.badge-pick.picked.legend { border-color: #f5c242; box-shadow: 0 0 12px rgba(245, 194, 66, 0.3); }
+.badge-pick.picked.epic { border-color: #b266ff; box-shadow: 0 0 12px rgba(178, 102, 255, 0.3); }
+.badge-pick.picked.rare { border-color: #4da6ff; box-shadow: 0 0 12px rgba(77, 166, 255, 0.3); }
+.badge-pick.picked.common { border-color: #9ca3af; }
+
+.badge-pick .pick-icon {
+  width: 40px; height: 40px;
+  border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.1rem; color: #fff;
+  flex-shrink: 0;
+}
+.badge-pick.legend .pick-icon { background: radial-gradient(circle, #f5c242, #b02a37); }
+.badge-pick.epic .pick-icon { background: radial-gradient(circle, #d9a6ff, #6b2dbd); }
+.badge-pick.rare .pick-icon { background: radial-gradient(circle, #8fc6ff, #2b6bbf); }
+.badge-pick.common .pick-icon { background: radial-gradient(circle, #9ca3af, #4b5563); }
+
+.badge-pick .check-icon {
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1.5px solid rgba(255, 255, 255, 0.2);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: transparent;
+  font-size: 14px;
+  flex-shrink: 0;
+  transition: all 0.2s;
+}
+.badge-pick.picked .check-icon {
+  background: linear-gradient(135deg, #f5c242, #e3a93c);
+  border-color: #f5c242;
+  color: #0b1020;
+  box-shadow: 0 0 8px rgba(245, 194, 66, 0.6);
+}
+
+/* Toast */
+#toast {
+  animation: toastIn 0.25s ease-out;
+}
+@keyframes toastIn {
+  from { opacity: 0; transform: translate(-50%, -6px); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
