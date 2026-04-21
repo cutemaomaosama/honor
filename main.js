@@ -198,7 +198,7 @@ function renderPeopleList() {
     }).slice(0, 5);
     const selfTag = isSelf(p.id) ? '<span class="self-tag"><i class="ri-shield-check-fill"></i>本人</span>' : '';
     return `
-      <a href="#/person/${p.id}" class="person-card group ${isSelf(p.id) ? 'is-self' : ''}">
+      <a href="#/person/${p.id}" class="person-card group ${isSelf(p.id) ? 'is-self' : ''}" data-pid="${p.id}">
         <div class="person-card-bg"></div>
         <div class="relative">
           <div class="flex items-center gap-3 mb-3">
@@ -222,7 +222,7 @@ function renderPeopleList() {
           </div>
           <div class="flex gap-1.5 mb-3 min-h-[32px]">
             ${topBadges.map(h => `
-              <div class="mini-badge-sm ${h.quality}" title="${escapeHtml(h.name)}"><i class="${h.icon}"></i></div>
+              <div class="mini-badge-sm ${h.quality}" data-hid="${h.id}"><i class="${h.icon}"></i></div>
             `).join('')}
             ${p.honors.length > 5 ? `<div class="mini-badge-sm more">+${p.honors.length - 5}</div>` : ''}
             ${p.honors.length === 0 ? '<div class="text-xs text-white/30">暂无荣誉</div>' : ''}
@@ -236,6 +236,21 @@ function renderPeopleList() {
       </a>
     `;
   }).join('');
+
+  // 为列表卡片内的每个 mini-badge-sm 绑定悬浮 tooltip
+  grid.querySelectorAll('.person-card').forEach(card => {
+    const pid = Number(card.dataset.pid);
+    const person = people.find(x => x.id === pid);
+    if (!person) return;
+    card.querySelectorAll('.mini-badge-sm[data-hid]').forEach(el => {
+      const hid = Number(el.dataset.hid);
+      const honor = person.honors.find(h => h.id === hid);
+      if (!honor) return;
+      el.addEventListener('mouseenter', (e) => { e.stopPropagation(); showTooltip(e, honor); });
+      el.addEventListener('mousemove', (e) => { e.stopPropagation(); moveTooltip(e); });
+      el.addEventListener('mouseleave', hideTooltip);
+    });
+  });
 }
 
 function bindPeopleEvents() {
@@ -279,7 +294,8 @@ function renderPerson() {
   const self = isSelf(p.id);
   $('#selfBadge').classList.toggle('hidden', !self);
   $('#editQuoteBtn').classList.toggle('hidden', !self);
-  $('#manageBadgesBtn').classList.toggle('hidden', !self || p.honors.length === 0);
+  // 精选徽章现在自动按品质展示前 5 枚，不再需要手动管理
+  $('#manageBadgesBtn').classList.add('hidden');
   $('#quoteView').classList.remove('hidden');
   $('#quoteEdit').classList.add('hidden');
 
@@ -292,13 +308,16 @@ function renderMiniBadges() {
   const p = state.currentPerson;
   const container = $('#miniBadges');
   const empty = $('#miniBadgesEmpty');
-  const badges = p.miniBadgeIds.map(id => p.honors.find(h => h.id === id)).filter(Boolean);
+  // 自动展示：按品质排序取前 5 枚（与全员荣誉列表卡片保持一致）
+  const order = { legend: 0, epic: 1, rare: 2, common: 3 };
+  const badges = p.honors.slice().sort((a, b) => {
+    if (order[a.quality] !== order[b.quality]) return order[a.quality] - order[b.quality];
+    return (b.date || '').localeCompare(a.date || '');
+  }).slice(0, 5);
   if (badges.length === 0) {
     container.innerHTML = '';
-    empty.classList.toggle('hidden', !isSelf(p.id));
-    if (!isSelf(p.id)) {
-      container.innerHTML = '<div class="text-xs text-white/30">该策划暂未挑选展示徽章</div>';
-    }
+    empty.classList.remove('hidden');
+    empty.textContent = '暂未获得荣誉';
     return;
   }
   empty.classList.add('hidden');
@@ -1060,6 +1079,8 @@ function openHonorForm(honor) {
   const person = people.find(p => p.engName === state.adminHonorPerson);
   const qualityOpts = Object.keys(QUALITY).map(k => ({ value: k, label: QUALITY[k].name }));
   const catOpts = Object.keys(CATEGORY).map(k => ({ value: k, label: CATEGORY[k] }));
+  // 新增时不展示"获得理由"字段；编辑时仍保留，方便修改已有数据
+  const reasonField = isEdit ? textareaField('获得理由', 'fHReason', honor?.reason || '', 2) : '';
   const body = `
     <div class="text-xs text-white/50 mb-1">所属策划：<span class="text-wz-gold">${escapeHtml(person ? person.name : '')}</span> (${escapeHtml(personEng)})</div>
     ${field('荣誉名称', 'fHName', 'text', honor?.name || '')}
@@ -1068,7 +1089,7 @@ function openHonorForm(honor) {
     ${field('图标 (RemixIcon class)', 'fHIcon', 'text', honor?.icon || 'ri-medal-fill')}
     ${field('获取日期', 'fHDate', 'date', honor?.date || '')}
     ${textareaField('荣誉描述', 'fHDesc', honor?.desc || '', 2)}
-    ${textareaField('获得理由', 'fHReason', honor?.reason || '', 2)}
+    ${reasonField}
   `;
   openFormModal(isEdit ? '编辑荣誉' : '新增荣誉', body, async () => {
     const payload = {
@@ -1078,8 +1099,11 @@ function openHonorForm(honor) {
       icon: $('#fHIcon').value.trim() || 'ri-medal-fill',
       date: $('#fHDate').value,
       description: $('#fHDesc').value.trim(),
-      reason: $('#fHReason').value.trim()
     };
+    // 编辑时才写入 reason；新增时不提交 reason 字段（后端默认空）
+    if (isEdit) {
+      payload.reason = $('#fHReason') ? $('#fHReason').value.trim() : '';
+    }
     if (!payload.name) { toast('荣誉名称必填'); return; }
     if (isEdit) {
       await adminUpdateHonor(honor.id, payload);
