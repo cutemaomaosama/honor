@@ -453,13 +453,15 @@ export async function togglePersonLike(toEngName) {
   return apiJson('/api/like', { method: 'POST', body: { toEngName } });
 }
 
-// ========= 留言板 =========
-export async function fetchMessages(limit = 50) {
-  return apiJson('/api/messages?limit=' + limit + '&_t=' + Date.now());
+// ========= 留言板（target 指向某位策划的英文名；不传则为全局留言板）=========
+export async function fetchMessages(limit = 50, target = '') {
+  const q = new URLSearchParams({ limit: String(limit), _t: String(Date.now()) });
+  if (target) q.set('target', target);
+  return apiJson('/api/messages?' + q.toString());
 }
 
-export async function postMessage(content) {
-  return apiJson('/api/messages', { method: 'POST', body: { content } });
+export async function postMessage(content, target = '') {
+  return apiJson('/api/messages', { method: 'POST', body: { content, target } });
 }
 
 export async function deleteMessage(id) {

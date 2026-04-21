@@ -14,59 +14,64 @@
           colors: {
             'wz-gold': '#f5c242',
             'wz-gold2': '#e3a93c',
-            'wz-dark': '#0b1020',
+            'wz-gold-deep': '#a77016',
+            'wz-dark': '#080616',
             'wz-dark2': '#141a33',
             'wz-purple': '#5b2ca0',
             'wz-red': '#b02a37'
           },
           fontFamily: {
-            zh: ['"PingFang SC"', '"Microsoft YaHei"', 'sans-serif']
+            zh: ['"PingFang SC"', '"Microsoft YaHei"', 'sans-serif'],
+            serif: ['"STSong"', '"FangSong"', 'serif']
           }
         }
       }
     }
   </script>
 </head>
-<body class="font-zh text-white min-h-screen bg-wz-dark">
+<body class="font-zh text-white min-h-screen">
 
-  <!-- 顶部装饰背景 -->
-  <div class="fixed inset-0 -z-10 pointer-events-none">
-    <div class="absolute inset-0 bg-gradient-to-br from-[#0a0f24] via-[#1a1040] to-[#0a0f24]"></div>
-    <div class="absolute inset-0 opacity-30 bg-[radial-gradient(ellipse_at_top,_#f5c24233,_transparent_60%)]"></div>
-    <div class="absolute inset-0 opacity-20 bg-[radial-gradient(ellipse_at_bottom_right,_#5b2ca055,_transparent_60%)]"></div>
+  <!-- 顶部装饰背景：华丽金碧辉煌 -->
+  <div class="fixed inset-0 -z-10 pointer-events-none overflow-hidden">
+    <div class="absolute inset-0 bg-gradient-to-br from-[#0a0614] via-[#1a0b24] to-[#0a0614]"></div>
+    <div class="absolute inset-0 opacity-40 bg-[radial-gradient(ellipse_at_top,_#f5c24244,_transparent_55%)]"></div>
+    <div class="absolute inset-0 opacity-25 bg-[radial-gradient(ellipse_at_bottom_right,_#b02a3766,_transparent_60%)]"></div>
+    <div class="absolute inset-0 opacity-20 bg-[radial-gradient(ellipse_at_bottom_left,_#5b2ca066,_transparent_60%)]"></div>
+    <div class="gold-particles"></div>
   </div>
 
   <!-- 顶部导航 -->
-  <header class="sticky top-0 z-30 backdrop-blur bg-wz-dark/70 border-b border-wz-gold/20">
+  <header class="sticky top-0 z-30 backdrop-blur bg-wz-dark/80 border-b-2 border-wz-gold/40 shadow-lg shadow-wz-gold/10">
+    <div class="absolute inset-x-0 bottom-0 h-[1px] bg-gradient-to-r from-transparent via-wz-gold to-transparent opacity-80"></div>
     <div class="max-w-[1400px] mx-auto flex items-center justify-between px-6 py-3 gap-4">
       <a href="#/people" class="flex items-center gap-3 flex-shrink-0 hover:opacity-90 transition">
-        <div class="w-10 h-10 rounded-lg bg-gradient-to-br from-wz-gold to-wz-red flex items-center justify-center shadow-lg shadow-wz-gold/20">
-          <i class="ri-vip-crown-2-fill text-wz-dark text-2xl"></i>
+        <div class="w-11 h-11 rounded-lg bg-gradient-to-br from-wz-gold via-yellow-300 to-wz-red flex items-center justify-center shadow-lg shadow-wz-gold/40 relative overflow-hidden">
+          <div class="absolute inset-0 opacity-40 bg-[radial-gradient(circle_at_30%_30%,_#fff,_transparent_50%)]"></div>
+          <i class="ri-vip-crown-2-fill text-wz-dark text-2xl relative"></i>
         </div>
         <div class="hidden sm:block">
-          <h1 class="text-lg font-bold tracking-wider text-wz-gold">王者荣耀 · 策划荣誉系统</h1>
-          <p class="text-xs text-white/50">Honor of Kings · Designer Honor Hall</p>
+          <h1 class="text-lg font-bold tracking-widest text-transparent bg-clip-text bg-gradient-to-r from-wz-gold via-yellow-200 to-wz-gold">
+            王者荣耀 · 策划荣誉殿堂
+          </h1>
+          <p class="text-[10px] text-wz-gold/60 tracking-[0.25em] uppercase">Honor of Kings · Hall of Glory</p>
         </div>
       </a>
       <nav class="flex items-center gap-1 text-sm">
         <a href="#/people" class="nav-btn" data-route="people"><i class="ri-group-fill mr-1"></i>全员荣誉</a>
-        <a href="#/rank" class="nav-btn" data-route="rank"><i class="ri-trophy-line mr-1"></i>排行榜</a>
         <a href="#/me" class="nav-btn" data-route="me"><i class="ri-user-heart-line mr-1"></i>我的</a>
         <a href="#/admin" id="adminNavBtn" class="nav-btn hidden" data-route="admin"><i class="ri-shield-keyhole-fill mr-1"></i>管理台</a>
       </nav>
       <div class="flex items-center gap-2 flex-shrink-0">
-        <!-- 未登录：显示"登录"按钮 -->
-        <button id="loginBtn" class="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-wz-gold text-wz-dark text-sm font-semibold hover:brightness-110 transition">
+        <button id="loginBtn" class="inline-flex items-center gap-1.5 px-4 py-1.5 rounded-full bg-gradient-to-r from-wz-gold to-wz-gold2 text-wz-dark text-sm font-semibold hover:brightness-110 hover:shadow-lg hover:shadow-wz-gold/40 transition">
           <i class="ri-login-box-line"></i><span class="hidden sm:inline">登录</span>
         </button>
-        <!-- 已登录：显示用户下拉 -->
         <div id="userMenuWrap" class="relative hidden">
-          <button id="userMenuBtn" class="flex items-center gap-2 bg-white/5 rounded-full px-3 py-1.5 border border-white/10 hover:border-wz-gold/60 transition">
+          <button id="userMenuBtn" class="flex items-center gap-2 bg-white/5 rounded-full px-3 py-1.5 border border-wz-gold/30 hover:border-wz-gold/70 transition">
             <i id="loginIcon" class="ri-shield-user-fill text-green-400"></i>
             <span id="currentUser" class="text-sm">未登录</span>
             <i class="ri-arrow-down-s-line text-white/50"></i>
           </button>
-          <div id="userMenuPanel" class="hidden absolute right-0 mt-2 w-56 bg-wz-dark2 border border-wz-gold/30 rounded-xl shadow-2xl py-2 z-40">
+          <div id="userMenuPanel" class="hidden absolute right-0 mt-2 w-56 bg-wz-dark2 border border-wz-gold/40 rounded-xl shadow-2xl py-2 z-40">
             <div class="px-4 py-2 border-b border-white/10">
               <div class="text-sm font-semibold text-wz-gold" id="umName">—</div>
               <div class="text-[11px] text-white/50" id="umRole">—</div>
@@ -82,49 +87,55 @@
 
   <main class="max-w-[1400px] mx-auto px-4 md:px-6 py-6 space-y-8">
 
-    <!-- ============ 视图1：策划列表（首页）============ -->
+    <!-- ============ 视图1：全员荣誉（首页）============ -->
     <section id="viewPeople" class="route-view space-y-6">
       <!-- Hero 横幅 -->
-      <div class="relative rounded-2xl overflow-hidden border border-wz-gold/30">
-        <div class="absolute inset-0 bg-gradient-to-r from-wz-purple/40 via-wz-dark2 to-wz-red/30"></div>
-        <div class="absolute inset-0 opacity-30 bg-[radial-gradient(circle_at_80%_30%,_#f5c242,_transparent_50%)]"></div>
-        <div class="relative p-6 md:p-10 flex flex-col md:flex-row items-start md:items-center gap-6">
-          <div class="flex-1">
-            <h2 class="text-2xl md:text-4xl font-bold text-wz-gold mb-2">
-              <i class="ri-star-smile-fill"></i> 策划组·荣誉殿堂
-            </h2>
-            <p class="text-white/70 text-sm md:text-base">每一位策划都有属于自己的荣耀之墙，点击头像走进他们的传奇故事。</p>
+      <div class="relative rounded-3xl overflow-hidden hall-banner">
+        <div class="absolute inset-0 bg-gradient-to-r from-[#3a0c14] via-[#1a0b2e] to-[#3a0c14]"></div>
+        <div class="absolute inset-0 opacity-40 bg-[radial-gradient(circle_at_20%_30%,_#f5c242,_transparent_45%)]"></div>
+        <div class="absolute inset-0 opacity-30 bg-[radial-gradient(circle_at_85%_70%,_#b02a37,_transparent_50%)]"></div>
+        <div class="banner-shine"></div>
+        <div class="relative p-8 md:p-12 text-center">
+          <div class="inline-flex items-center gap-2 px-4 py-1 rounded-full bg-wz-gold/15 border border-wz-gold/40 mb-4">
+            <i class="ri-vip-crown-2-fill text-wz-gold"></i>
+            <span class="text-xs tracking-[0.3em] text-wz-gold uppercase">Hall of Glory</span>
           </div>
-          <div class="flex gap-3 md:gap-6">
-            <div class="text-center">
-              <div class="text-2xl md:text-3xl font-bold text-wz-gold" id="peopleCount">0</div>
-              <div class="text-xs text-white/50">策划总数</div>
-            </div>
-            <div class="text-center">
-              <div class="text-2xl md:text-3xl font-bold text-wz-gold" id="totalHonors">0</div>
-              <div class="text-xs text-white/50">荣誉总数</div>
-            </div>
-            <div class="text-center">
-              <div class="text-2xl md:text-3xl font-bold text-wz-gold" id="totalLegend">0</div>
-              <div class="text-xs text-white/50">传说荣誉</div>
-            </div>
-          </div>
+          <h2 class="text-3xl md:text-5xl font-bold mb-3 text-transparent bg-clip-text bg-gradient-to-b from-yellow-100 via-wz-gold to-wz-gold2 drop-shadow-[0_2px_12px_rgba(245,194,66,0.4)]">
+            策划组 · 荣誉殿堂
+          </h2>
+          <p class="text-white/70 text-sm md:text-base">
+            <span class="text-wz-gold">✦</span> 每一位策划都有属于自己的荣耀之墙 <span class="text-wz-gold">✦</span>
+          </p>
         </div>
       </div>
 
-      <!-- 搜索 + 筛选 -->
-      <div class="flex flex-col md:flex-row gap-3">
-        <div class="relative flex-1">
-          <i class="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-white/40"></i>
-          <input id="peopleSearch" type="text" placeholder="搜索策划姓名、部门..."
-            class="w-full pl-9 pr-3 py-2.5 rounded-lg bg-white/5 border border-white/10 focus:border-wz-gold focus:outline-none text-sm placeholder:text-white/30 transition" />
+      <!-- Top3 永恒荣耀榜 -->
+      <div>
+        <div class="flex items-center justify-center gap-3 mb-6">
+          <div class="h-[2px] w-12 bg-gradient-to-r from-transparent to-wz-gold"></div>
+          <h3 class="text-lg md:text-xl font-bold tracking-widest text-wz-gold flex items-center gap-2">
+            <i class="ri-trophy-fill"></i>
+            <span>荣耀之巅 · Top 3</span>
+          </h3>
+          <div class="h-[2px] w-12 bg-gradient-to-l from-transparent to-wz-gold"></div>
         </div>
-        <select id="peopleDept" class="px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 focus:border-wz-gold text-sm outline-none">
+        <div id="topThree" class="grid grid-cols-3 gap-3 md:gap-6 items-end"></div>
+      </div>
+
+      <!-- 搜索 + 筛选 -->
+      <div class="flex flex-col md:flex-row gap-3 pt-2">
+        <div class="relative flex-1">
+          <i class="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-wz-gold/60"></i>
+          <input id="peopleSearch" type="text" placeholder="搜索策划姓名、部门、英文名..."
+            class="w-full pl-9 pr-3 py-2.5 rounded-lg bg-white/5 border border-wz-gold/20 focus:border-wz-gold focus:outline-none text-sm placeholder:text-white/30 transition" />
+        </div>
+        <select id="peopleDept" class="px-3 py-2.5 rounded-lg bg-white/5 border border-wz-gold/20 focus:border-wz-gold text-sm outline-none">
           <option value="all">全部部门</option>
         </select>
-        <select id="peopleSort" class="px-3 py-2.5 rounded-lg bg-white/5 border border-white/10 focus:border-wz-gold text-sm outline-none">
+        <select id="peopleSort" class="px-3 py-2.5 rounded-lg bg-white/5 border border-wz-gold/20 focus:border-wz-gold text-sm outline-none">
           <option value="score">按荣誉值排序</option>
           <option value="count">按荣誉数排序</option>
+          <option value="likes">按点赞数排序</option>
           <option value="name">按姓名排序</option>
         </select>
       </div>
@@ -135,84 +146,47 @@
         <i class="ri-inbox-line text-5xl mb-2"></i>
         <p>没有找到匹配的策划</p>
       </div>
-
-      <!-- 留言板 -->
-      <div class="relative rounded-2xl overflow-hidden border border-wz-gold/30 bg-white/5 backdrop-blur mt-4">
-        <div class="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_20%_30%,_#5b2ca0,_transparent_50%)] pointer-events-none"></div>
-        <div class="relative p-5 md:p-6">
-          <div class="flex items-center justify-between mb-4">
-            <h2 class="text-xl md:text-2xl font-bold flex items-center gap-2">
-              <i class="ri-chat-quote-fill text-wz-gold"></i>
-              <span>留言板</span>
-              <span class="text-sm text-white/50 font-normal">Message Board</span>
-            </h2>
-            <div class="text-xs text-white/40"><span id="msgCount">0</span> 条留言</div>
-          </div>
-
-          <div class="mb-4">
-            <div id="msgLoginTip" class="hidden p-3 rounded-lg bg-wz-gold/10 border border-wz-gold/30 text-sm text-wz-gold text-center">
-              <i class="ri-information-line"></i> 请先登录后再发表留言
-            </div>
-            <div id="msgInputWrap" class="hidden">
-              <textarea id="msgInput" rows="2" maxlength="500"
-                class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 focus:border-wz-gold text-sm outline-none resize-none"
-                placeholder="留下你的祝福、感谢或建议…（最多 500 字）"></textarea>
-              <div class="flex justify-between items-center mt-2">
-                <span class="text-[11px] text-white/40"><span id="msgLen">0</span> / 500</span>
-                <button id="msgSubmitBtn" class="btn-save px-4 py-1.5 text-sm">
-                  <i class="ri-send-plane-fill mr-1"></i>发送
-                </button>
-              </div>
-            </div>
-          </div>
-
-          <div id="msgList" class="space-y-3 max-h-[500px] overflow-y-auto pr-1"></div>
-          <div id="msgEmpty" class="hidden text-center py-10 text-white/40">
-            <i class="ri-chat-3-line text-4xl mb-1"></i>
-            <p class="text-sm">暂无留言，快来成为第一个吧～</p>
-          </div>
-        </div>
-      </div>
     </section>
 
     <!-- ============ 视图2：个人荣誉墙 ============ -->
     <section id="viewPerson" class="route-view hidden space-y-6">
       <!-- 返回按钮 -->
       <div class="flex items-center justify-between">
-        <a href="#/people" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-sm transition">
-          <i class="ri-arrow-left-line"></i> 返回全员列表
+        <a href="#/people" class="inline-flex items-center gap-2 px-4 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-wz-gold/20 hover:border-wz-gold/50 text-sm transition">
+          <i class="ri-arrow-left-line"></i> 返回全员荣誉
         </a>
         <div class="flex gap-2">
-          <button id="prevPerson" class="px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-sm transition" title="上一位">
+          <button id="prevPerson" class="px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-wz-gold/20 hover:border-wz-gold/50 text-sm transition" title="上一位">
             <i class="ri-arrow-left-s-line"></i>
           </button>
-          <button id="nextPerson" class="px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-white/10 text-sm transition" title="下一位">
+          <button id="nextPerson" class="px-3 py-2 rounded-lg bg-white/5 hover:bg-white/10 border border-wz-gold/20 hover:border-wz-gold/50 text-sm transition" title="下一位">
             <i class="ri-arrow-right-s-line"></i>
           </button>
         </div>
       </div>
 
       <!-- 策划个人信息 + 小徽章 -->
-      <div class="relative rounded-2xl overflow-hidden border border-wz-gold/30 shadow-xl shadow-black/40">
-        <div class="absolute inset-0 bg-gradient-to-r from-wz-purple/40 via-wz-dark2 to-wz-red/30"></div>
-        <div class="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_20%_30%,_#f5c242,_transparent_50%)]"></div>
+      <div class="relative rounded-3xl overflow-hidden border-2 border-wz-gold/40 shadow-2xl shadow-black/60 ornate-frame">
+        <div class="absolute inset-0 bg-gradient-to-br from-[#3a0c14] via-wz-dark2 to-[#2a0a3e]"></div>
+        <div class="absolute inset-0 opacity-35 bg-[radial-gradient(circle_at_20%_30%,_#f5c242,_transparent_55%)]"></div>
+        <div class="absolute inset-0 opacity-25 bg-[radial-gradient(circle_at_80%_70%,_#b02a37,_transparent_55%)]"></div>
+        <div class="banner-shine"></div>
+
         <div class="relative p-6 md:p-8 flex flex-col md:flex-row items-center gap-6">
           <div class="relative flex-shrink-0">
-            <div class="w-28 h-28 md:w-32 md:h-32 rounded-full p-[3px] bg-gradient-to-br from-wz-gold to-wz-red">
-              <div class="w-full h-full rounded-full bg-wz-dark overflow-hidden flex items-center justify-center">
-                <img id="avatarImg" src="" alt="头像" class="w-full h-full object-cover hidden"
-                     onerror="this.classList.add('hidden');this.removeAttribute('src');document.getElementById('avatarFallback').classList.remove('hidden');" />
-                <i id="avatarFallback" class="ri-user-smile-fill text-5xl text-wz-gold"></i>
+            <div class="avatar-ring">
+              <div class="w-28 h-28 md:w-32 md:h-32 rounded-full p-[3px] bg-gradient-to-br from-wz-gold via-yellow-200 to-wz-red">
+                <div class="w-full h-full rounded-full bg-wz-dark overflow-hidden flex items-center justify-center">
+                  <img id="avatarImg" src="" alt="头像" class="w-full h-full object-cover hidden"
+                       onerror="this.classList.add('hidden');this.removeAttribute('src');document.getElementById('avatarFallback').classList.remove('hidden');" />
+                  <i id="avatarFallback" class="ri-user-smile-fill text-5xl text-wz-gold"></i>
+                </div>
               </div>
-            </div>
-            <div class="absolute -bottom-1 -right-1 bg-wz-gold text-wz-dark text-xs font-bold px-2 py-0.5 rounded-full shadow-md">
-              Lv.<span id="userLevel">12</span>
             </div>
             <!-- 本人可见：修改头像按钮 -->
             <button id="changeAvatarBtn" class="hidden absolute top-0 right-0 w-8 h-8 rounded-full bg-wz-gold text-wz-dark flex items-center justify-center shadow-lg hover:scale-110 transition" title="修改头像（需管理员审核）">
               <i class="ri-camera-fill"></i>
             </button>
-            <!-- 审核状态小标 -->
             <div id="avatarPendingTag" class="hidden absolute -top-1 -left-1 bg-orange-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow">
               审核中
             </div>
@@ -220,14 +194,13 @@
 
           <div class="flex-1 text-center md:text-left">
             <div class="flex flex-wrap items-center justify-center md:justify-start gap-3 mb-2">
-              <h2 id="userName" class="text-2xl md:text-3xl font-bold">—</h2>
+              <h2 id="userName" class="text-2xl md:text-3xl font-bold text-transparent bg-clip-text bg-gradient-to-r from-yellow-100 via-wz-gold to-wz-gold2 drop-shadow">—</h2>
               <span class="px-2 py-0.5 rounded text-xs bg-wz-gold/20 text-wz-gold border border-wz-gold/40" id="userDept">—</span>
-              <span class="px-2 py-0.5 rounded text-xs bg-wz-purple/30 text-purple-200 border border-wz-purple/50" id="userRole">—</span>
+              <span class="px-2 py-0.5 rounded text-xs bg-wz-purple/30 text-purple-200 border border-wz-purple/50 font-mono" id="userEng">—</span>
               <span id="selfBadge" class="hidden px-2 py-0.5 rounded text-xs bg-green-500/20 text-green-300 border border-green-500/40">
                 <i class="ri-shield-check-fill"></i> 本人
               </span>
             </div>
-            <!-- 个性签名区 -->
             <div class="quote-wrap mb-4">
               <div id="quoteView" class="flex items-center justify-center md:justify-start gap-2">
                 <p class="text-white/70 text-sm italic" id="userQuote">"—"</p>
@@ -259,10 +232,10 @@
                 </div>
               </div>
               <div class="stat-card">
-                <i class="ri-star-smile-fill text-purple-300 text-2xl"></i>
+                <i class="ri-heart-3-fill text-pink-400 text-2xl"></i>
                 <div>
-                  <div class="text-xl font-bold" id="statEpic">0</div>
-                  <div class="text-xs text-white/60">史诗荣誉</div>
+                  <div class="text-xl font-bold" id="statLikes">0</div>
+                  <div class="text-xs text-white/60">收到点赞</div>
                 </div>
               </div>
               <div class="stat-card">
@@ -273,18 +246,21 @@
                 </div>
               </div>
             </div>
+            <!-- 点赞按钮 -->
+            <div class="mt-4 flex justify-center md:justify-start">
+              <button id="personLikeBtn" class="like-btn-lg" data-like-eng="">
+                <i class="ri-heart-line"></i>
+                <span>点赞</span>
+                <span class="like-count-lg">0</span>
+              </button>
+            </div>
           </div>
         </div>
 
-        <div class="relative border-t border-white/10 bg-black/30 px-6 py-4">
+        <div class="relative border-t border-wz-gold/20 bg-black/30 px-6 py-4">
           <div class="flex items-center justify-between mb-2">
-            <h3 class="text-sm text-wz-gold flex items-center gap-2"><i class="ri-shield-star-line"></i>精选小徽章</h3>
-            <div class="flex items-center gap-3">
-              <span class="text-xs text-white/40">自动展示品质最高的 5 枚 · 悬停查看详情</span>
-              <button id="manageBadgesBtn" class="hidden edit-btn text-xs" title="管理展示徽章">
-                <i class="ri-settings-3-line"></i> 管理徽章
-              </button>
-            </div>
+            <h3 class="text-sm text-wz-gold flex items-center gap-2"><i class="ri-shield-star-line"></i>精选徽章</h3>
+            <span class="text-xs text-white/40">自动展示品质最高的 5 枚 · 悬停查看详情</span>
           </div>
           <div id="miniBadges" class="flex flex-wrap gap-3"></div>
           <div id="miniBadgesEmpty" class="hidden text-white/40 text-xs py-2">
@@ -293,21 +269,21 @@
         </div>
       </div>
 
-      <!-- 荣誉墙控制栏 -->
+      <!-- 荣誉墙 -->
       <div>
         <div class="flex flex-col md:flex-row gap-4 items-stretch md:items-center justify-between">
           <h2 class="text-2xl font-bold flex items-center gap-2">
             <i class="ri-medal-2-fill text-wz-gold"></i>
-            <span>荣誉墙</span>
+            <span class="text-transparent bg-clip-text bg-gradient-to-r from-yellow-100 to-wz-gold">荣誉墙</span>
             <span class="text-sm text-white/50 font-normal">Honor Wall</span>
           </h2>
           <div class="flex flex-col sm:flex-row gap-3 flex-1 md:max-w-xl md:ml-auto">
             <div class="relative flex-1">
               <i class="ri-search-line absolute left-3 top-1/2 -translate-y-1/2 text-white/40"></i>
               <input id="searchInput" type="text" placeholder="搜索荣誉名称、描述..."
-                class="w-full pl-9 pr-3 py-2 rounded-lg bg-white/5 border border-white/10 focus:border-wz-gold focus:outline-none text-sm placeholder:text-white/30 transition" />
+                class="w-full pl-9 pr-3 py-2 rounded-lg bg-white/5 border border-wz-gold/20 focus:border-wz-gold focus:outline-none text-sm placeholder:text-white/30 transition" />
             </div>
-            <select id="yearFilter" class="px-3 py-2 rounded-lg bg-white/5 border border-white/10 focus:border-wz-gold text-sm outline-none">
+            <select id="yearFilter" class="px-3 py-2 rounded-lg bg-white/5 border border-wz-gold/20 focus:border-wz-gold text-sm outline-none">
               <option value="all">全部年份</option>
             </select>
           </div>
@@ -331,7 +307,6 @@
         </div>
       </div>
 
-      <!-- 荣誉卡片网格 -->
       <div>
         <div id="honorGrid" class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 xl:grid-cols-5 gap-4"></div>
         <div id="emptyTip" class="hidden text-center py-16 text-white/40">
@@ -339,34 +314,44 @@
           <p>未找到匹配的荣誉</p>
         </div>
       </div>
-    </section>
 
-    <!-- ============ 视图3：排行榜 ============ -->
-    <section id="viewRank" class="route-view hidden">
-      <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-6">
-        <h2 class="text-2xl font-bold flex items-center gap-2">
-          <i class="ri-trophy-fill text-wz-gold"></i>
-          <span>荣誉排行榜</span>
-          <span class="text-sm text-white/50 font-normal">Leaderboard</span>
-        </h2>
-        <div class="flex gap-2 bg-white/5 p-1 rounded-lg border border-white/10" id="rankTabs">
-          <button class="rank-tab active" data-r="year">年榜</button>
-          <button class="rank-tab" data-r="half">半年榜</button>
-          <button class="rank-tab" data-r="total">总榜</button>
+      <!-- 留言板 -->
+      <div class="relative rounded-2xl overflow-hidden border-2 border-wz-gold/30 bg-white/5 backdrop-blur mt-4 ornate-frame">
+        <div class="absolute inset-0 opacity-25 bg-[radial-gradient(circle_at_20%_30%,_#5b2ca0,_transparent_55%)] pointer-events-none"></div>
+        <div class="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_85%_70%,_#f5c242,_transparent_55%)] pointer-events-none"></div>
+        <div class="relative p-5 md:p-6">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl md:text-2xl font-bold flex items-center gap-2">
+              <i class="ri-chat-quote-fill text-wz-gold"></i>
+              <span>留言板</span>
+              <span class="text-sm text-white/50 font-normal">给 <span id="msgTargetName" class="text-wz-gold">—</span> 的祝福</span>
+            </h2>
+            <div class="text-xs text-white/40"><span id="msgCount">0</span> 条留言</div>
+          </div>
+
+          <div class="mb-4">
+            <div id="msgLoginTip" class="hidden p-3 rounded-lg bg-wz-gold/10 border border-wz-gold/30 text-sm text-wz-gold text-center">
+              <i class="ri-information-line"></i> 请先登录后再发表留言
+            </div>
+            <div id="msgInputWrap" class="hidden">
+              <textarea id="msgInput" rows="2" maxlength="500"
+                class="w-full px-3 py-2 rounded-lg bg-white/5 border border-wz-gold/20 focus:border-wz-gold text-sm outline-none resize-none"
+                placeholder="写下你的祝福、感谢或建议...（最多 500 字，Ctrl/⌘ + Enter 发送）"></textarea>
+              <div class="flex justify-between items-center mt-2">
+                <span class="text-[11px] text-white/40"><span id="msgLen">0</span> / 500</span>
+                <button id="msgSubmitBtn" class="btn-save px-4 py-1.5 text-sm">
+                  <i class="ri-send-plane-fill mr-1"></i>发送
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div id="msgList" class="space-y-3 max-h-[500px] overflow-y-auto pr-1"></div>
+          <div id="msgEmpty" class="hidden text-center py-10 text-white/40">
+            <i class="ri-chat-3-line text-4xl mb-1"></i>
+            <p class="text-sm">暂无留言，快来成为第一个吧～</p>
+          </div>
         </div>
-      </div>
-
-      <div id="topThree" class="grid grid-cols-3 gap-3 md:gap-6 items-end mb-8"></div>
-
-      <div class="bg-white/5 rounded-2xl border border-white/10 overflow-hidden">
-        <div class="grid grid-cols-12 text-xs text-white/40 px-5 py-3 border-b border-white/10">
-          <div class="col-span-1">排名</div>
-          <div class="col-span-5 md:col-span-4">策划</div>
-          <div class="col-span-3 hidden md:block">部门</div>
-          <div class="col-span-3 md:col-span-2 text-center">荣誉数</div>
-          <div class="col-span-3 md:col-span-2 text-right">荣誉值</div>
-        </div>
-        <div id="rankList"></div>
       </div>
     </section>
 
@@ -378,7 +363,7 @@
           <span>管理台</span>
           <span class="text-sm text-white/50 font-normal">Admin Console</span>
         </h2>
-        <div class="flex gap-2 bg-white/5 p-1 rounded-lg border border-white/10" id="adminTabs">
+        <div class="flex gap-2 bg-white/5 p-1 rounded-lg border border-wz-gold/20" id="adminTabs">
           <button class="rank-tab active" data-t="person">策划管理</button>
           <button class="rank-tab" data-t="honor">荣誉管理</button>
           <button class="rank-tab" data-t="account">账号管理</button>
@@ -386,7 +371,6 @@
         </div>
       </div>
 
-      <!-- 策划管理 -->
       <div id="adminPersonPanel" class="admin-panel space-y-3">
         <div class="flex justify-between items-center">
           <div class="text-sm text-white/60">管理所有策划档案</div>
@@ -394,25 +378,22 @@
             <i class="ri-add-line mr-1"></i>新增策划
           </button>
         </div>
-        <div class="bg-white/5 rounded-2xl border border-white/10 overflow-hidden">
+        <div class="bg-white/5 rounded-2xl border border-wz-gold/20 overflow-hidden">
           <div class="grid grid-cols-12 text-xs text-white/40 px-4 py-3 border-b border-white/10">
-            <div class="col-span-2">英文名</div>
-            <div class="col-span-2">中文名</div>
-            <div class="col-span-3">部门</div>
-            <div class="col-span-2">职位</div>
-            <div class="col-span-1 text-center">等级</div>
+            <div class="col-span-3">英文名</div>
+            <div class="col-span-3">中文名</div>
+            <div class="col-span-4">部门</div>
             <div class="col-span-2 text-right">操作</div>
           </div>
           <div id="adminPersonList"></div>
         </div>
       </div>
 
-      <!-- 荣誉管理 -->
       <div id="adminHonorPanel" class="admin-panel hidden space-y-3">
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-2">
           <div class="flex items-center gap-2 text-sm">
             <span class="text-white/60">选择策划：</span>
-            <select id="adminHonorPerson" class="px-3 py-1.5 rounded-lg bg-white/5 border border-white/10 focus:border-wz-gold text-sm outline-none">
+            <select id="adminHonorPerson" class="px-3 py-1.5 rounded-lg bg-white/5 border border-wz-gold/20 focus:border-wz-gold text-sm outline-none">
               <option value="">-- 请选择 --</option>
             </select>
           </div>
@@ -420,7 +401,7 @@
             <i class="ri-add-line mr-1"></i>新增荣誉
           </button>
         </div>
-        <div class="bg-white/5 rounded-2xl border border-white/10 overflow-hidden">
+        <div class="bg-white/5 rounded-2xl border border-wz-gold/20 overflow-hidden">
           <div class="grid grid-cols-12 text-xs text-white/40 px-4 py-3 border-b border-white/10">
             <div class="col-span-3">荣誉名称</div>
             <div class="col-span-1 text-center">品质</div>
@@ -433,7 +414,6 @@
         </div>
       </div>
 
-      <!-- 账号管理 -->
       <div id="adminAccountPanel" class="admin-panel hidden space-y-3">
         <div class="flex justify-between items-center">
           <div class="text-sm text-white/60">管理系统登录账号</div>
@@ -441,7 +421,7 @@
             <i class="ri-user-add-line mr-1"></i>新增账号
           </button>
         </div>
-        <div class="bg-white/5 rounded-2xl border border-white/10 overflow-hidden">
+        <div class="bg-white/5 rounded-2xl border border-wz-gold/20 overflow-hidden">
           <div class="grid grid-cols-12 text-xs text-white/40 px-4 py-3 border-b border-white/10">
             <div class="col-span-3">用户名</div>
             <div class="col-span-2">中文名</div>
@@ -453,11 +433,10 @@
         </div>
       </div>
 
-      <!-- 头像审核 -->
       <div id="adminAvatarPanel" class="admin-panel hidden space-y-3">
         <div class="flex flex-col md:flex-row md:items-center justify-between gap-2">
           <div class="text-sm text-white/60">审核策划自助上传的头像</div>
-          <div class="flex gap-1 bg-white/5 p-1 rounded-lg border border-white/10" id="avatarFilterTabs">
+          <div class="flex gap-1 bg-white/5 p-1 rounded-lg border border-wz-gold/20" id="avatarFilterTabs">
             <button class="rank-tab active" data-s="pending">待审核</button>
             <button class="rank-tab" data-s="approved">已通过</button>
             <button class="rank-tab" data-s="rejected">已拒绝</button>
@@ -471,8 +450,8 @@
   </main>
 
   <!-- 荣誉详情弹窗 -->
-  <div id="honorModal" class="fixed inset-0 bg-black/70 z-50 hidden items-center justify-center p-4 backdrop-blur-sm">
-    <div class="relative bg-gradient-to-br from-wz-dark2 to-wz-dark rounded-2xl border border-wz-gold/40 max-w-md w-full p-6 shadow-2xl">
+  <div id="honorModal" class="fixed inset-0 bg-black/80 z-50 hidden items-center justify-center p-4 backdrop-blur-sm">
+    <div class="relative bg-gradient-to-br from-wz-dark2 to-wz-dark rounded-2xl border-2 border-wz-gold/50 max-w-md w-full p-6 shadow-[0_0_40px_rgba(245,194,66,0.3)]">
       <button id="closeModal" class="absolute top-3 right-3 w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition">
         <i class="ri-close-line text-xl"></i>
       </button>
@@ -480,38 +459,13 @@
     </div>
   </div>
 
-  <!-- 管理徽章弹窗 -->
-  <div id="badgeModal" class="fixed inset-0 bg-black/70 z-50 hidden items-center justify-center p-4 backdrop-blur-sm">
-    <div class="relative bg-gradient-to-br from-wz-dark2 to-wz-dark rounded-2xl border border-wz-gold/40 max-w-3xl w-full p-6 shadow-2xl max-h-[90vh] flex flex-col">
-      <button id="closeBadgeModal" class="absolute top-3 right-3 w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition">
-        <i class="ri-close-line text-xl"></i>
-      </button>
-      <h3 class="text-xl font-bold text-wz-gold mb-2 flex items-center gap-2">
-        <i class="ri-shield-star-line"></i> 管理展示徽章
-      </h3>
-      <p class="text-xs text-white/50 mb-4">
-        从你的荣誉中挑选 <span class="text-wz-gold font-semibold">最多 8 枚</span> 展示在主页精选徽章栏，已选：
-        <span id="selectedCount" class="text-wz-gold font-bold">0</span> / 8
-      </p>
-      <div id="badgeMgrGrid" class="flex-1 overflow-y-auto grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3 pr-1"></div>
-      <div class="flex justify-end gap-2 pt-4 mt-2 border-t border-white/10">
-        <button id="cancelBadgeMgr" class="btn-cancel px-4">取消</button>
-        <button id="saveBadgeMgr" class="btn-save px-4">
-          <i class="ri-check-line mr-1"></i>保存
-        </button>
-      </div>
-    </div>
-  </div>
-
-  <!-- 轻提示 -->
+  <!-- Toast / Tooltip -->
   <div id="toast" class="fixed top-20 left-1/2 -translate-x-1/2 z-[70] hidden px-4 py-2 rounded-lg bg-wz-dark2 border border-wz-gold/40 text-sm shadow-2xl"></div>
-
-  <!-- 徽章悬浮提示 -->
   <div id="tooltip" class="fixed z-[60] hidden pointer-events-none max-w-xs bg-wz-dark2 border border-wz-gold/40 rounded-xl p-3 shadow-2xl text-sm"></div>
 
   <!-- 登录弹窗 -->
   <div id="loginModal" class="fixed inset-0 bg-black/70 z-[80] hidden items-center justify-center p-4 backdrop-blur-sm">
-    <div class="relative bg-gradient-to-br from-wz-dark2 to-wz-dark rounded-2xl border border-wz-gold/40 max-w-sm w-full p-6 shadow-2xl">
+    <div class="relative bg-gradient-to-br from-wz-dark2 to-wz-dark rounded-2xl border-2 border-wz-gold/50 max-w-sm w-full p-6 shadow-2xl">
       <button data-close="loginModal" class="absolute top-3 right-3 w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition">
         <i class="ri-close-line text-xl"></i>
       </button>
@@ -526,12 +480,12 @@
         <div>
           <label class="text-xs text-white/60 mb-1 block">用户名</label>
           <input id="loginUser" type="text" autocomplete="username"
-            class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 focus:border-wz-gold text-sm outline-none" placeholder="请输入用户名" />
+            class="w-full px-3 py-2 rounded-lg bg-white/5 border border-wz-gold/20 focus:border-wz-gold text-sm outline-none" placeholder="请输入用户名" />
         </div>
         <div>
           <label class="text-xs text-white/60 mb-1 block">密码</label>
           <input id="loginPwd" type="password" autocomplete="current-password"
-            class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 focus:border-wz-gold text-sm outline-none" placeholder="请输入密码" />
+            class="w-full px-3 py-2 rounded-lg bg-white/5 border border-wz-gold/20 focus:border-wz-gold text-sm outline-none" placeholder="请输入密码" />
         </div>
         <button id="doLoginBtn" class="btn-save w-full py-2">
           <i class="ri-login-box-line mr-1"></i>登录
@@ -542,7 +496,7 @@
 
   <!-- 修改密码弹窗 -->
   <div id="pwdModal" class="fixed inset-0 bg-black/70 z-[80] hidden items-center justify-center p-4 backdrop-blur-sm">
-    <div class="relative bg-gradient-to-br from-wz-dark2 to-wz-dark rounded-2xl border border-wz-gold/40 max-w-sm w-full p-6 shadow-2xl">
+    <div class="relative bg-gradient-to-br from-wz-dark2 to-wz-dark rounded-2xl border-2 border-wz-gold/50 max-w-sm w-full p-6 shadow-2xl">
       <button data-close="pwdModal" class="absolute top-3 right-3 w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition">
         <i class="ri-close-line text-xl"></i>
       </button>
@@ -550,15 +504,15 @@
       <div class="space-y-3">
         <div>
           <label class="text-xs text-white/60 mb-1 block">当前密码</label>
-          <input id="oldPwd" type="password" class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 focus:border-wz-gold text-sm outline-none" />
+          <input id="oldPwd" type="password" class="w-full px-3 py-2 rounded-lg bg-white/5 border border-wz-gold/20 focus:border-wz-gold text-sm outline-none" />
         </div>
         <div>
           <label class="text-xs text-white/60 mb-1 block">新密码 <span class="text-white/30">(至少 4 位)</span></label>
-          <input id="newPwd" type="password" class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 focus:border-wz-gold text-sm outline-none" />
+          <input id="newPwd" type="password" class="w-full px-3 py-2 rounded-lg bg-white/5 border border-wz-gold/20 focus:border-wz-gold text-sm outline-none" />
         </div>
         <div>
           <label class="text-xs text-white/60 mb-1 block">确认新密码</label>
-          <input id="newPwd2" type="password" class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 focus:border-wz-gold text-sm outline-none" />
+          <input id="newPwd2" type="password" class="w-full px-3 py-2 rounded-lg bg-white/5 border border-wz-gold/20 focus:border-wz-gold text-sm outline-none" />
         </div>
         <div class="flex gap-2 pt-2">
           <button data-close="pwdModal" class="btn-cancel flex-1 py-2">取消</button>
@@ -568,10 +522,9 @@
     </div>
   </div>
 
-  <!-- 管理台（单独视图） -->
   <!-- 头像上传弹窗 -->
   <div id="avatarModal" class="fixed inset-0 bg-black/70 z-[80] hidden items-center justify-center p-4 backdrop-blur-sm">
-    <div class="relative bg-gradient-to-br from-wz-dark2 to-wz-dark rounded-2xl border border-wz-gold/40 max-w-md w-full p-6 shadow-2xl">
+    <div class="relative bg-gradient-to-br from-wz-dark2 to-wz-dark rounded-2xl border-2 border-wz-gold/50 max-w-md w-full p-6 shadow-2xl">
       <button data-close="avatarModal" class="absolute top-3 right-3 w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition">
         <i class="ri-close-line text-xl"></i>
       </button>
@@ -604,9 +557,9 @@
     </div>
   </div>
 
-  <!-- 通用表单弹窗：用于新增/编辑策划或荣誉 -->
+  <!-- 通用表单弹窗 -->
   <div id="formModal" class="fixed inset-0 bg-black/70 z-[80] hidden items-center justify-center p-4 backdrop-blur-sm">
-    <div class="relative bg-gradient-to-br from-wz-dark2 to-wz-dark rounded-2xl border border-wz-gold/40 max-w-lg w-full p-6 shadow-2xl max-h-[90vh] flex flex-col">
+    <div class="relative bg-gradient-to-br from-wz-dark2 to-wz-dark rounded-2xl border-2 border-wz-gold/50 max-w-lg w-full p-6 shadow-2xl max-h-[90vh] flex flex-col">
       <button data-close="formModal" class="absolute top-3 right-3 w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition">
         <i class="ri-close-line text-xl"></i>
       </button>
@@ -619,11 +572,10 @@
     </div>
   </div>
 
-  <!-- 管理台视图（放入 main 的路由区） -->
-
   <!-- 页脚 -->
-  <footer class="mt-16 border-t border-white/10 py-6 text-center text-white/50 text-xs">
-    <p>© 2026 王者荣耀策划组荣誉系统 · 至高荣耀，见证传奇</p>
+  <footer class="mt-16 border-t border-wz-gold/20 py-6 text-center text-white/50 text-xs">
+    <p class="text-wz-gold/60 tracking-[0.3em]">— Hall of Glory · Honor of Kings —</p>
+    <p class="mt-2">© 2026 王者荣耀策划组荣誉系统 · 至高荣耀，见证传奇</p>
     <p class="mt-2">由 <a href="https://with.woa.com/" style="color: #8A2BE2;" target="_blank">With</a> 通过自然语言生成</p>
   </footer>
 

@@ -1,7 +1,7 @@
 import {
-  QUALITY, CATEGORY, people, rankData, getPersonById,
-  currentUser, loadCurrentUser, isSelf, isAdmin, saveQuote, saveMiniBadges,
-  loadAllPersons, loadAllProfiles, refreshProfile,
+  QUALITY, CATEGORY, people, getPersonById,
+  currentUser, loadCurrentUser, isSelf, isAdmin, saveQuote,
+  loadAllPersons,
   apiLogin, apiLogout, apiChangePassword,
   adminCreatePerson, adminUpdatePerson, adminDeletePerson,
   adminCreateHonor, adminUpdateHonor, adminDeleteHonor,
@@ -17,16 +17,13 @@ const state = {
   search: '', quality: 'all', category: 'all', year: 'all',
   pSearch: '', pDept: 'all', pSort: 'score',
   currentPerson: null,
-  rankTab: 'year',
-  tmpBadges: new Set(),
   adminTab: 'person',
   adminHonorPerson: '',
   formSubmit: null,
-  // 新增
-  likeCounts: {},          // { engName: count }
-  likedToday: new Set(),   // 当前用户今日已赞的 engName 集合
-  avatarBust: {},          // { engName: timestamp }
-  avatarPickedDataUrl: '', // 头像选择后暂存
+  likeCounts: {},
+  likedToday: new Set(),
+  avatarBust: {},
+  avatarPickedDataUrl: '',
   adminAvatarStatus: 'pending'
 };
 
@@ -39,12 +36,10 @@ async function init() {
   await loadAllPersons();
   await loadLikesSummary();
   updateLoginUI();
-  renderPeopleStats();
   populateDeptFilter();
   bindGlobalEvents();
   bindPeopleEvents();
   bindPersonEvents();
-  bindRankEvents();
   bindEditEvents();
   bindAuthEvents();
   bindAdminEvents();
@@ -74,7 +69,7 @@ function updateLoginUI() {
     const displayName = currentUser.chnName || currentUser.username;
     $('#currentUser').textContent = displayName;
     $('#umName').textContent = displayName;
-    $('#umRole').textContent = currentUser.accountRole === 'admin' ? '管理员' : (currentUser.role || '普通用户');
+    $('#umRole').textContent = currentUser.accountRole === 'admin' ? '管理员' : '普通用户';
     $('#loginIcon').className = 'ri-shield-user-fill ' + (currentUser.accountRole === 'admin' ? 'text-wz-gold' : 'text-green-400');
     const showAdmin = currentUser.accountRole === 'admin';
     $('#adminNavBtn').classList.toggle('hidden', !showAdmin);
@@ -86,7 +81,6 @@ function updateLoginUI() {
     $('#userMenuPanel').classList.add('hidden');
     $('#adminNavBtn').classList.add('hidden');
   }
-  // 同步留言板输入区可见性
   refreshMessageUI();
 }
 
@@ -94,6 +88,7 @@ function updateLoginUI() {
 function loadAvatar(engName) {
   const img = $('#avatarImg');
   const fallback = $('#avatarFallback');
+  if (!img) return;
   img.classList.add('hidden');
   img.removeAttribute('src');
   fallback.classList.remove('hidden');
@@ -133,16 +128,14 @@ function handleRoute() {
     state.currentPerson = p;
     show('viewPerson');
     renderPerson();
-    loadAllPersons().then(() => {
+    loadAllPersons().then(async () => {
+      await loadLikesSummary();
       const latest = getPersonById(p.id);
       if (latest && state.currentPerson && state.currentPerson.id === p.id) {
         state.currentPerson = latest;
         renderPerson();
       }
     });
-  } else if (r1 === 'rank') {
-    show('viewRank');
-    renderRanking();
   } else if (r1 === 'me') {
     if (!currentUser.isLoggedIn) {
       toast('请先登录');
@@ -166,28 +159,68 @@ function handleRoute() {
     renderAdmin();
   } else {
     show('viewPeople');
+    renderTopThree();
     renderPeopleList();
-    loadMessages();
     loadAllPersons().then(async () => {
       await loadLikesSummary();
       if (!$('#viewPeople').classList.contains('hidden')) {
-        renderPeopleStats();
         populateDeptFilter();
+        renderTopThree();
         renderPeopleList();
       }
     });
   }
 }
 
-// ========= 策划列表 =========
-function renderPeopleStats() {
-  $('#peopleCount').textContent = people.length;
-  const totalH = people.reduce((s, p) => s + p.honors.length, 0);
-  const totalL = people.reduce((s, p) => s + p.honors.filter(h => h.quality === 'legend').length, 0);
-  $('#totalHonors').textContent = totalH;
-  $('#totalLegend').textContent = totalL;
+// ========= Top3（全员荣誉页顶部）=========
+function renderTopThree() {
+  const container = $('#topThree');
+  if (!container) return;
+  // 按荣誉值降序；并列时按荣誉数再姓名
+  const ranked = people.slice().sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    if (b.honors.length !== a.honors.length) return b.honors.length - a.honors.length;
+    return a.name.localeCompare(b.name, 'zh');
+  });
+  const top = ranked.slice(0, 3);
+  // 视觉顺序：第2-第1-第3
+  const order = [top[1], top[0], top[2]].filter(Boolean);
+  const posCls = ['podium-2', 'podium-1', 'podium-3'];
+  const crown = ['ri-medal-2-fill', 'ri-vip-crown-fill', 'ri-medal-fill'];
+  const rankNum = [2, 1, 3];
+  container.innerHTML = order.map((item, i) => {
+    if (!item) return '<div></div>';
+    const cls = posCls[i];
+    const bust = state.avatarBust[item.engName] || '';
+    const av = avatarUrl(item.engName) + (bust ? ('?t=' + bust) : '');
+    const legend = item.honors.filter(h => h.quality === 'legend').length;
+    const likes = state.likeCounts[item.engName] || 0;
+    return `
+      <a href="#/person/${item.id}" class="podium ${cls} block hover:brightness-110 transition ${isSelf(item.id) ? 'is-self' : ''}">
+        <div class="podium-crown"><i class="${crown[i]}"></i></div>
+        <div class="podium-avatar">
+          <img src="${av}" class="podium-avatar-img" alt=""
+               onerror="this.style.display='none';this.nextElementSibling&&(this.nextElementSibling.style.display='flex');" />
+          <div class="podium-avatar-fallback" style="display:none;">
+            <i class="ri-user-smile-fill text-4xl text-wz-gold/80"></i>
+          </div>
+        </div>
+        <div class="podium-rank">${rankNum[i]}</div>
+        <div class="font-bold text-base md:text-lg truncate text-wz-gold">${escapeHtml(item.name)}${isSelf(item.id) ? ' <span class=\"text-xs text-green-400\">(我)</span>' : ''}</div>
+        <div class="text-[11px] text-white/50 mb-2 truncate font-mono">${escapeHtml(item.engName)}</div>
+        <div class="text-[11px] text-white/60 italic truncate px-2 mb-2" title="${escapeHtml(item.quote || '')}">${item.quote ? '"' + escapeHtml(item.quote) + '"' : ''}</div>
+        <div class="flex justify-center gap-2 text-xs flex-wrap">
+          <span class="flex items-center gap-1 text-wz-gold"><i class="ri-medal-fill"></i> ${item.honors.length}</span>
+          <span class="flex items-center gap-1 text-red-300"><i class="ri-vip-diamond-fill"></i> ${legend}</span>
+          <span class="flex items-center gap-1 text-orange-400"><i class="ri-fire-fill"></i> ${item.score}</span>
+          <span class="flex items-center gap-1 text-pink-300"><i class="ri-heart-3-fill"></i> ${likes}</span>
+        </div>
+      </a>
+    `;
+  }).join('');
 }
 
+// ========= 策划列表 =========
 function populateDeptFilter() {
   const depts = [...new Set(people.map(p => p.dept))];
   const sel = $('#peopleDept');
@@ -204,13 +237,28 @@ function populateDeptFilter() {
 function renderPeopleList() {
   const grid = $('#peopleGrid');
   const kw = state.pSearch;
+  // Top3 集合（按荣誉值排名）
+  const ranked = people.slice().sort((a, b) => {
+    if (b.score !== a.score) return b.score - a.score;
+    if (b.honors.length !== a.honors.length) return b.honors.length - a.honors.length;
+    return a.name.localeCompare(b.name, 'zh');
+  });
+  const topIds = new Set(ranked.slice(0, 3).map(p => p.id));
+  // 过滤排除 top3
   let list = people.filter(p => {
+    if (topIds.has(p.id)) return false;
     if (state.pDept !== 'all' && p.dept !== state.pDept) return false;
-    if (kw && !p.name.toLowerCase().includes(kw) && !p.dept.toLowerCase().includes(kw)) return false;
+    if (kw) {
+      const n = (p.name || '').toLowerCase();
+      const d = (p.dept || '').toLowerCase();
+      const e = (p.engName || '').toLowerCase();
+      if (!n.includes(kw) && !d.includes(kw) && !e.includes(kw)) return false;
+    }
     return true;
   });
   if (state.pSort === 'score') list.sort((a, b) => b.score - a.score);
   else if (state.pSort === 'count') list.sort((a, b) => b.honors.length - a.honors.length);
+  else if (state.pSort === 'likes') list.sort((a, b) => (state.likeCounts[b.engName] || 0) - (state.likeCounts[a.engName] || 0));
   else if (state.pSort === 'name') list.sort((a, b) => a.name.localeCompare(b.name, 'zh'));
 
   if (list.length === 0) {
@@ -220,75 +268,78 @@ function renderPeopleList() {
   }
   $('#peopleEmpty').classList.add('hidden');
 
-  grid.innerHTML = list.map(p => {
-    const legend = p.honors.filter(h => h.quality === 'legend').length;
-    const topBadges = p.honors.slice().sort((a, b) => {
-      const order = { legend: 0, epic: 1, rare: 2, common: 3 };
-      return order[a.quality] - order[b.quality];
-    }).slice(0, 5);
-    const selfTag = isSelf(p.id) ? '<span class="self-tag"><i class="ri-shield-check-fill"></i>本人</span>' : '';
-    const likeCount = state.likeCounts[p.engName] || 0;
-    const liked = state.likedToday.has(p.engName);
-    const canLike = currentUser.isLoggedIn && currentUser.username !== p.engName;
-    const likeTitle = !currentUser.isLoggedIn ? '登录后可点赞'
-      : (currentUser.username === p.engName ? '不能给自己点赞'
-      : (liked ? '今日已点赞，点击取消' : '点赞（每人每天一次）'));
-    const bust = state.avatarBust[p.engName] || '';
-    const avUrl = avatarUrl(p.engName) + (bust ? ('?t=' + bust) : '');
-    return `
-      <div class="person-card group ${isSelf(p.id) ? 'is-self' : ''}" data-pid="${p.id}" data-eng="${escapeHtml(p.engName)}">
-        <a href="#/person/${p.id}" class="person-card-bg-link block absolute inset-0 z-0" aria-label="${escapeHtml(p.name)}"></a>
-        <div class="person-card-bg"></div>
-        <div class="relative pointer-events-none">
-          <div class="flex items-center gap-3 mb-3">
-            <div class="relative flex-shrink-0">
-              <div class="w-16 h-16 rounded-full p-[2px] bg-gradient-to-br from-wz-gold to-wz-red">
-                <div class="w-full h-full rounded-full bg-wz-dark2 overflow-hidden flex items-center justify-center">
-                  <img src="${avUrl}" alt="" class="card-avatar-img w-full h-full object-cover"
-                    onerror="this.style.display='none';this.nextElementSibling&&(this.nextElementSibling.style.display='flex');" />
-                  <div class="card-avatar-fallback w-full h-full flex items-center justify-center" style="display:none;">
-                    <i class="ri-user-smile-fill text-3xl text-wz-gold"></i>
-                  </div>
+  grid.innerHTML = list.map(p => personCardHTML(p)).join('');
+  bindPersonCards(grid);
+}
+
+function personCardHTML(p) {
+  const legend = p.honors.filter(h => h.quality === 'legend').length;
+  const topBadges = p.honors.slice().sort((a, b) => {
+    const order = { legend: 0, epic: 1, rare: 2, common: 3 };
+    return order[a.quality] - order[b.quality];
+  }).slice(0, 5);
+  const selfTag = isSelf(p.id) ? '<span class="self-tag"><i class="ri-shield-check-fill"></i>本人</span>' : '';
+  const likeCount = state.likeCounts[p.engName] || 0;
+  const liked = state.likedToday.has(p.engName);
+  const canLike = currentUser.isLoggedIn && currentUser.username !== p.engName;
+  const likeTitle = !currentUser.isLoggedIn ? '登录后可点赞'
+    : (currentUser.username === p.engName ? '不能给自己点赞'
+    : (liked ? '今日已点赞，点击取消' : '点赞（每人每天一次）'));
+  const bust = state.avatarBust[p.engName] || '';
+  const avUrl = avatarUrl(p.engName) + (bust ? ('?t=' + bust) : '');
+  const quote = p.quote ? `"${escapeHtml(p.quote)}"` : '<span class="text-white/30 italic">暂无签名</span>';
+  return `
+    <div class="person-card group ${isSelf(p.id) ? 'is-self' : ''}" data-pid="${p.id}" data-eng="${escapeHtml(p.engName)}">
+      <a href="#/person/${p.id}" class="person-card-bg-link block absolute inset-0 z-0" aria-label="${escapeHtml(p.name)}"></a>
+      <div class="person-card-bg"></div>
+      <div class="relative pointer-events-none">
+        <div class="flex items-center gap-3 mb-3">
+          <div class="relative flex-shrink-0">
+            <div class="w-16 h-16 rounded-full p-[2px] bg-gradient-to-br from-wz-gold via-yellow-200 to-wz-red">
+              <div class="w-full h-full rounded-full bg-wz-dark2 overflow-hidden flex items-center justify-center">
+                <img src="${avUrl}" alt="" class="card-avatar-img w-full h-full object-cover"
+                  onerror="this.style.display='none';this.nextElementSibling&&(this.nextElementSibling.style.display='flex');" />
+                <div class="card-avatar-fallback w-full h-full flex items-center justify-center" style="display:none;">
+                  <i class="ri-user-smile-fill text-3xl text-wz-gold"></i>
                 </div>
               </div>
-              <div class="absolute -bottom-1 -right-1 bg-wz-gold text-wz-dark text-[10px] font-bold px-1.5 py-0 rounded-full">
-                Lv.${p.level}
-              </div>
-            </div>
-            <div class="min-w-0 flex-1">
-              <div class="text-base font-bold truncate group-hover:text-wz-gold transition">
-                ${escapeHtml(p.name)}${selfTag}
-              </div>
-              <div class="text-xs text-white/50 truncate">${escapeHtml(p.dept)}</div>
-              <div class="text-[11px] text-wz-gold/70 mt-0.5">${escapeHtml(p.role)}</div>
             </div>
           </div>
-          <div class="flex gap-1.5 mb-3 min-h-[32px]">
-            ${topBadges.map(h => `
-              <div class="mini-badge-sm ${h.quality}" data-hid="${h.id}"><i class="${h.icon}"></i></div>
-            `).join('')}
-            ${p.honors.length > 5 ? `<div class="mini-badge-sm more">+${p.honors.length - 5}</div>` : ''}
-            ${p.honors.length === 0 ? '<div class="text-xs text-white/30">暂无荣誉</div>' : ''}
-          </div>
-          <div class="grid grid-cols-4 gap-2 pt-3 border-t border-white/10">
-            <div class="text-center"><div class="text-sm font-bold text-wz-gold">${p.honors.length}</div><div class="text-[10px] text-white/50">荣誉</div></div>
-            <div class="text-center"><div class="text-sm font-bold text-red-400">${legend}</div><div class="text-[10px] text-white/50">传说</div></div>
-            <div class="text-center"><div class="text-sm font-bold text-orange-400">${p.score}</div><div class="text-[10px] text-white/50">荣誉值</div></div>
-            <div class="text-center">
-              <button class="like-btn ${liked ? 'liked' : ''} ${canLike ? '' : 'disabled'}"
-                      data-like-eng="${escapeHtml(p.engName)}"
-                      title="${likeTitle}">
-                <i class="${liked ? 'ri-heart-fill' : 'ri-heart-line'}"></i>
-                <span class="like-count">${likeCount}</span>
-              </button>
+          <div class="min-w-0 flex-1">
+            <div class="text-base font-bold truncate group-hover:text-wz-gold transition">
+              ${escapeHtml(p.name)}${selfTag}
             </div>
+            <div class="text-xs text-white/50 truncate">${escapeHtml(p.dept)}</div>
+            <div class="text-[11px] text-wz-gold/70 mt-0.5 font-mono truncate" title="${escapeHtml(p.engName)}">@${escapeHtml(p.engName)}</div>
+          </div>
+        </div>
+        <div class="quote-strip text-[12px] text-white/70 mb-3 italic truncate px-1" title="${escapeHtml(p.quote || '')}">${quote}</div>
+        <div class="flex gap-1.5 mb-3 min-h-[32px]">
+          ${topBadges.map(h => `
+            <div class="mini-badge-sm ${h.quality}" data-hid="${h.id}"><i class="${h.icon}"></i></div>
+          `).join('')}
+          ${p.honors.length > 5 ? `<div class="mini-badge-sm more">+${p.honors.length - 5}</div>` : ''}
+          ${p.honors.length === 0 ? '<div class="text-xs text-white/30">暂无荣誉</div>' : ''}
+        </div>
+        <div class="grid grid-cols-4 gap-2 pt-3 border-t border-wz-gold/15">
+          <div class="text-center"><div class="text-sm font-bold text-wz-gold">${p.honors.length}</div><div class="text-[10px] text-white/50">荣誉</div></div>
+          <div class="text-center"><div class="text-sm font-bold text-red-400">${legend}</div><div class="text-[10px] text-white/50">传说</div></div>
+          <div class="text-center"><div class="text-sm font-bold text-orange-400">${p.score}</div><div class="text-[10px] text-white/50">荣誉值</div></div>
+          <div class="text-center">
+            <button class="like-btn ${liked ? 'liked' : ''} ${canLike ? '' : 'disabled'}"
+                    data-like-eng="${escapeHtml(p.engName)}"
+                    title="${likeTitle}">
+              <i class="${liked ? 'ri-heart-fill' : 'ri-heart-line'}"></i>
+              <span class="like-count">${likeCount}</span>
+            </button>
           </div>
         </div>
       </div>
-    `;
-  }).join('');
+    </div>
+  `;
+}
 
-  // 为列表卡片内的每个 mini-badge-sm 绑定悬浮 tooltip，以及点赞按钮
+function bindPersonCards(grid) {
   grid.querySelectorAll('.person-card').forEach(card => {
     const pid = Number(card.dataset.pid);
     const person = people.find(x => x.id === pid);
@@ -297,7 +348,6 @@ function renderPeopleList() {
       const hid = Number(el.dataset.hid);
       const honor = person.honors.find(h => h.id === hid);
       if (!honor) return;
-      // 启用徽章交互层
       el.style.pointerEvents = 'auto';
       el.addEventListener('mouseenter', (e) => { e.stopPropagation(); showTooltip(e, honor); });
       el.addEventListener('mousemove', (e) => { e.stopPropagation(); moveTooltip(e); });
@@ -323,18 +373,38 @@ async function handleLikeClick(engName) {
     state.likeCounts[engName] = res.total;
     if (res.liked) state.likedToday.add(engName);
     else state.likedToday.delete(engName);
-    // 局部刷新所有同 engName 的点赞按钮
-    document.querySelectorAll(`.like-btn[data-like-eng="${cssEscape(engName)}"]`).forEach(btn => {
-      btn.classList.toggle('liked', res.liked);
-      const icon = btn.querySelector('i');
-      if (icon) icon.className = res.liked ? 'ri-heart-fill' : 'ri-heart-line';
-      const cnt = btn.querySelector('.like-count');
-      if (cnt) cnt.textContent = res.total;
-    });
+    // 刷新所有同 engName 的点赞按钮（列表小按钮 + 个人页大按钮）
+    syncLikeButtons(engName, res.liked, res.total);
+    // 如果当前在个人页展示的就是这个人，同步大按钮和 stats
+    if (state.currentPerson && state.currentPerson.engName === engName) {
+      $('#statLikes').textContent = res.total;
+    }
+    // Top3 中可能包含此人，刷新一下 top3 计数显示
+    if (!$('#viewPeople').classList.contains('hidden')) {
+      renderTopThree();
+    }
     toast(res.liked ? '点赞成功 ❤' : '已取消点赞');
   } catch (e) {
     toast(e.message || '点赞失败');
   }
+}
+
+function syncLikeButtons(engName, liked, total) {
+  document.querySelectorAll(`.like-btn[data-like-eng="${cssEscape(engName)}"]`).forEach(btn => {
+    btn.classList.toggle('liked', liked);
+    const icon = btn.querySelector('i');
+    if (icon) icon.className = liked ? 'ri-heart-fill' : 'ri-heart-line';
+    const cnt = btn.querySelector('.like-count');
+    if (cnt) cnt.textContent = total;
+  });
+  // 大按钮
+  document.querySelectorAll(`.like-btn-lg[data-like-eng="${cssEscape(engName)}"]`).forEach(btn => {
+    btn.classList.toggle('liked', liked);
+    const icon = btn.querySelector('i');
+    if (icon) icon.className = liked ? 'ri-heart-fill' : 'ri-heart-line';
+    const cnt = btn.querySelector('.like-count-lg');
+    if (cnt) cnt.textContent = total;
+  });
 }
 
 function cssEscape(s) {
@@ -367,26 +437,21 @@ function renderPerson() {
 
   $('#userName').textContent = p.name;
   $('#userDept').textContent = p.dept;
-  $('#userRole').textContent = p.role;
-  $('#userLevel').textContent = p.level;
+  $('#userEng').textContent = '@' + p.engName;
   $('#userQuote').textContent = `"${p.quote || ''}"`;
   loadAvatar(p.engName);
 
   const legend = p.honors.filter(h => h.quality === 'legend').length;
-  const epic = p.honors.filter(h => h.quality === 'epic').length;
+  const likes = state.likeCounts[p.engName] || 0;
   $('#statTotal').textContent = p.honors.length;
   $('#statLegend').textContent = legend;
-  $('#statEpic').textContent = epic;
+  $('#statLikes').textContent = likes;
   $('#statScore').textContent = p.score;
 
   const self = isSelf(p.id);
   $('#selfBadge').classList.toggle('hidden', !self);
   $('#editQuoteBtn').classList.toggle('hidden', !self);
-  // 精选徽章现在自动按品质展示前 5 枚，不再需要手动管理
-  $('#manageBadgesBtn').classList.add('hidden');
-  // 修改头像按钮：只有本人可见
   $('#changeAvatarBtn').classList.toggle('hidden', !self);
-  // 审核中提示：只对本人查询
   $('#avatarPendingTag').classList.add('hidden');
   if (self) {
     fetchMyAvatarRequest().then(r => {
@@ -398,6 +463,27 @@ function renderPerson() {
   $('#quoteView').classList.remove('hidden');
   $('#quoteEdit').classList.add('hidden');
 
+  // 个人页点赞按钮
+  const likeBtn = $('#personLikeBtn');
+  if (likeBtn) {
+    const liked = state.likedToday.has(p.engName);
+    const canLike = currentUser.isLoggedIn && currentUser.username !== p.engName;
+    likeBtn.dataset.likeEng = p.engName;
+    likeBtn.classList.toggle('liked', liked);
+    likeBtn.classList.toggle('disabled', !canLike);
+    const icon = likeBtn.querySelector('i');
+    if (icon) icon.className = liked ? 'ri-heart-fill' : 'ri-heart-line';
+    const cnt = likeBtn.querySelector('.like-count-lg');
+    if (cnt) cnt.textContent = likes;
+    likeBtn.title = !currentUser.isLoggedIn ? '登录后可点赞'
+      : (currentUser.username === p.engName ? '不能给自己点赞'
+      : (liked ? '今日已点赞，点击取消' : '点赞（每人每天一次）'));
+  }
+
+  // 留言板 target 标题 & 加载
+  $('#msgTargetName').textContent = p.name;
+  loadMessages(p.engName);
+
   renderMiniBadges();
   populateYearFilter();
   renderHonors();
@@ -407,7 +493,6 @@ function renderMiniBadges() {
   const p = state.currentPerson;
   const container = $('#miniBadges');
   const empty = $('#miniBadgesEmpty');
-  // 自动展示：按品质排序取前 5 枚（与全员荣誉列表卡片保持一致）
   const order = { legend: 0, epic: 1, rare: 2, common: 3 };
   const badges = p.honors.slice().sort((a, b) => {
     if (order[a.quality] !== order[b.quality]) return order[a.quality] - order[b.quality];
@@ -561,10 +646,11 @@ function openModal(honor) {
         <div class="text-xs text-wz-gold mb-1"><i class="ri-information-line"></i> 荣誉描述</div>
         <p class="text-sm text-white/85 leading-relaxed">${escapeHtml(honor.desc)}</p>
       </div>
+      ${honor.reason ? `
       <div class="text-left bg-white/5 rounded-lg p-4 border border-white/10">
         <div class="text-xs text-wz-gold mb-1"><i class="ri-flag-line"></i> 获得理由</div>
         <p class="text-sm text-white/85 leading-relaxed">${escapeHtml(honor.reason)}</p>
-      </div>
+      </div>` : ''}
     </div>`;
   $('#honorModal').classList.remove('hidden');
   $('#honorModal').classList.add('flex', 'open');
@@ -589,6 +675,14 @@ function bindPersonEvents() {
   });
   $('#prevPerson').addEventListener('click', () => switchPerson(-1));
   $('#nextPerson').addEventListener('click', () => switchPerson(1));
+  // 个人页点赞大按钮
+  const bigLike = $('#personLikeBtn');
+  if (bigLike) {
+    bigLike.addEventListener('click', async () => {
+      const eng = bigLike.dataset.likeEng;
+      if (eng) await handleLikeClick(eng);
+    });
+  }
 }
 function switchPerson(delta) {
   const p = state.currentPerson;
@@ -598,7 +692,7 @@ function switchPerson(delta) {
   location.hash = `#/person/${next.id}`;
 }
 
-// ========= 编辑事件（签名 + 徽章管理） =========
+// ========= 编辑事件（仅个性签名）=========
 function bindEditEvents() {
   $('#editQuoteBtn').addEventListener('click', () => {
     const p = state.currentPerson;
@@ -619,14 +713,6 @@ function bindEditEvents() {
       $('#quoteView').classList.remove('hidden');
       $('#quoteEdit').classList.add('hidden');
     }
-  });
-
-  $('#manageBadgesBtn').addEventListener('click', openBadgeManager);
-  $('#closeBadgeModal').addEventListener('click', closeBadgeManager);
-  $('#cancelBadgeMgr').addEventListener('click', closeBadgeManager);
-  $('#saveBadgeMgr').addEventListener('click', doSaveBadges);
-  $('#badgeModal').addEventListener('click', (e) => {
-    if (e.target.id === 'badgeModal') closeBadgeManager();
   });
 }
 
@@ -649,78 +735,6 @@ function doSaveQuote() {
   });
 }
 
-function openBadgeManager() {
-  const p = state.currentPerson;
-  if (!p || !isSelf(p.id)) return;
-  state.tmpBadges = new Set(p.miniBadgeIds);
-  renderBadgeManager();
-  $('#badgeModal').classList.remove('hidden');
-  $('#badgeModal').classList.add('flex');
-}
-function closeBadgeManager() {
-  $('#badgeModal').classList.add('hidden');
-  $('#badgeModal').classList.remove('flex');
-}
-function renderBadgeManager() {
-  const p = state.currentPerson;
-  const grid = $('#badgeMgrGrid');
-  const sorted = p.honors.slice().sort((a, b) => {
-    const order = { legend: 0, epic: 1, rare: 2, common: 3 };
-    if (order[a.quality] !== order[b.quality]) return order[a.quality] - order[b.quality];
-    return (b.date || '').localeCompare(a.date || '');
-  });
-  grid.innerHTML = sorted.map(h => {
-    const checked = state.tmpBadges.has(h.id);
-    return `
-      <label class="badge-pick ${h.quality} ${checked ? 'picked' : ''}" data-id="${h.id}">
-        <input type="checkbox" ${checked ? 'checked' : ''} class="sr-only" />
-        <div class="pick-icon"><i class="${h.icon}"></i></div>
-        <div class="flex-1 min-w-0">
-          <div class="text-sm font-semibold truncate">${escapeHtml(h.name)}</div>
-          <div class="text-[11px] text-white/50 truncate">${QUALITY[h.quality].name} · ${CATEGORY[h.category] || h.category}</div>
-        </div>
-        <i class="ri-check-line check-icon"></i>
-      </label>
-    `;
-  }).join('');
-  $('#selectedCount').textContent = state.tmpBadges.size;
-  grid.querySelectorAll('.badge-pick').forEach(el => {
-    el.addEventListener('click', (e) => {
-      e.preventDefault();
-      const id = Number(el.dataset.id);
-      if (state.tmpBadges.has(id)) state.tmpBadges.delete(id);
-      else {
-        if (state.tmpBadges.size >= 8) { toast('最多只能展示 8 枚徽章'); return; }
-        state.tmpBadges.add(id);
-      }
-      renderBadgeManager();
-    });
-  });
-}
-function doSaveBadges() {
-  const p = state.currentPerson;
-  if (!p || !isSelf(p.id)) return;
-  const sorted = p.honors
-    .filter(h => state.tmpBadges.has(h.id))
-    .sort((a, b) => {
-      const order = { legend: 0, epic: 1, rare: 2, common: 3 };
-      if (order[a.quality] !== order[b.quality]) return order[a.quality] - order[b.quality];
-      return (b.date || '').localeCompare(a.date || '');
-    })
-    .map(h => h.id);
-  const btn = $('#saveBadgeMgr');
-  if (btn) btn.disabled = true;
-  saveMiniBadges(p, sorted).then(() => {
-    renderMiniBadges();
-    closeBadgeManager();
-    toast('展示徽章已更新 🛡');
-  }).catch(err => {
-    toast(err.message || '保存失败');
-  }).finally(() => {
-    if (btn) btn.disabled = false;
-  });
-}
-
 // ========= Toast =========
 let toastTimer = null;
 function toast(msg) {
@@ -731,80 +745,22 @@ function toast(msg) {
   toastTimer = setTimeout(() => t.classList.add('hidden'), 2200);
 }
 
-// ========= 排行榜 =========
-function renderRanking() {
-  const list = rankData[state.rankTab] || [];
-  const top = list.slice(0, 3);
-  const rest = list.slice(3);
-  const order = [top[1], top[0], top[2]].filter(Boolean);
-  const posCls = ['podium-2', 'podium-1', 'podium-3'];
-  const crown = ['ri-medal-2-fill', 'ri-vip-crown-fill', 'ri-medal-fill'];
-  const rankNum = [2, 1, 3];
-
-  $('#topThree').innerHTML = order.map((item, i) => {
-    if (!item) return '<div></div>';
-    const cls = posCls[i];
-    return `
-      <a href="#/person/${item.id}" class="podium ${cls} block hover:brightness-110 transition ${isSelf(item.id) ? 'is-self' : ''}">
-        <div class="podium-crown"><i class="${crown[i]}"></i></div>
-        <div class="podium-avatar">
-          <i class="ri-user-smile-fill text-4xl text-white/70"></i>
-        </div>
-        <div class="podium-rank">${rankNum[i]}</div>
-        <div class="font-bold text-base md:text-lg truncate">${escapeHtml(item.name)}${isSelf(item.id) ? ' <span class=\"text-xs text-green-400\">(我)</span>' : ''}</div>
-        <div class="text-[11px] text-white/50 mb-2 truncate">${escapeHtml(item.dept)}</div>
-        <div class="flex justify-center gap-3 text-xs">
-          <span class="flex items-center gap-1 text-wz-gold"><i class="ri-medal-fill"></i> ${item.honors}</span>
-          <span class="flex items-center gap-1 text-red-300"><i class="ri-fire-fill"></i> ${item.score}</span>
-        </div>
-      </a>
-    `;
-  }).join('');
-
-  $('#rankList').innerHTML = rest.map(item => `
-    <a href="#/person/${item.id}" class="rank-row block ${isSelf(item.id) ? 'is-self' : ''}">
-      <div class="col-span-1 text-white/50 font-semibold">#${item.rank}</div>
-      <div class="col-span-5 md:col-span-4 flex items-center gap-3">
-        <div class="w-9 h-9 rounded-full bg-gradient-to-br from-wz-gold/30 to-wz-purple/30 flex items-center justify-center flex-shrink-0">
-          <i class="ri-user-smile-fill text-white/80"></i>
-        </div>
-        <div class="min-w-0">
-          <div class="text-sm font-medium truncate">${escapeHtml(item.name)}${isSelf(item.id) ? ' <span class=\"text-xs text-green-400\">(我)</span>' : ''}</div>
-          <div class="text-xs text-white/40 truncate md:hidden">${escapeHtml(item.dept)}</div>
-        </div>
-      </div>
-      <div class="col-span-3 text-sm text-white/60 hidden md:block truncate">${escapeHtml(item.dept)}</div>
-      <div class="col-span-3 md:col-span-2 text-center text-sm text-wz-gold font-semibold">${item.honors}</div>
-      <div class="col-span-3 md:col-span-2 text-right text-sm text-red-300 font-semibold">${item.score}</div>
-    </a>
-  `).join('');
-}
-function bindRankEvents() {
-  $('#rankTabs').addEventListener('click', (e) => {
-    const btn = e.target.closest('.rank-tab'); if (!btn) return;
-    $$('#rankTabs .rank-tab').forEach(b => b.classList.remove('active'));
-    btn.classList.add('active'); state.rankTab = btn.dataset.r; renderRanking();
-  });
-}
-
 // ========= 全局 =========
 function bindGlobalEvents() {
   $('#closeModal').addEventListener('click', closeModal);
   $('#honorModal').addEventListener('click', (e) => { if (e.target.id === 'honorModal') closeModal(); });
   document.addEventListener('keydown', (e) => {
     if (e.key === 'Escape') {
-      closeModal(); closeBadgeManager();
+      closeModal();
       closeSimpleModal('loginModal');
       closeSimpleModal('pwdModal');
       closeSimpleModal('formModal');
       closeSimpleModal('avatarModal');
     }
   });
-  // 通用关闭按钮
   document.querySelectorAll('[data-close]').forEach(btn => {
     btn.addEventListener('click', () => closeSimpleModal(btn.dataset.close));
   });
-  // 点击遮罩关闭
   ['loginModal', 'pwdModal', 'formModal', 'avatarModal'].forEach(id => {
     const m = document.getElementById(id);
     if (m) m.addEventListener('click', e => { if (e.target === m) closeSimpleModal(id); });
@@ -869,10 +825,6 @@ async function doLogin() {
     updateLoginUI();
     await loadAllPersons();
     await loadLikesSummary();
-    if (!$('#viewPeople').classList.contains('hidden')) {
-      renderPeopleList();
-      loadMessages();
-    }
     handleRoute();
   } catch (e) {
     toast(e.message || '登录失败');
@@ -885,16 +837,11 @@ async function doLogout() {
   await apiLogout();
   updateLoginUI();
   toast('已退出登录');
-  // 清空点赞状态
   state.likedToday = new Set();
   await loadLikesSummary();
   if (location.hash.startsWith('#/admin') || location.hash.startsWith('#/me')) {
     location.hash = '#/people';
   } else {
-    if (!$('#viewPeople').classList.contains('hidden')) {
-      renderPeopleList();
-      loadMessages();
-    }
     handleRoute();
   }
 }
@@ -950,7 +897,6 @@ function bindAdminEvents() {
       finally { btn.disabled = false; }
     }
   });
-  // 头像审核过滤 tab
   const aft = $('#avatarFilterTabs');
   if (aft) {
     aft.addEventListener('click', (e) => {
@@ -981,7 +927,6 @@ function renderAdmin() {
     $('#adminAvatarPanel').classList.remove('hidden');
     renderAdminAvatars();
   }
-  // 刷新头像审核小红点
   refreshAvatarPendingBadge();
 }
 
@@ -1019,7 +964,7 @@ async function renderAdminAvatars() {
       const st = statusMap[r.status] || statusMap.pending;
       const showActions = r.status === 'pending';
       return `
-        <div class="bg-white/5 border border-white/10 rounded-xl p-4 flex gap-3" data-id="${r.id}">
+        <div class="bg-white/5 border border-wz-gold/20 rounded-xl p-4 flex gap-3" data-id="${r.id}">
           <img src="${escapeHtml(r.previewUrl)}" alt="预览"
                class="w-24 h-24 rounded-xl object-cover border-2 border-wz-gold/40 flex-shrink-0 bg-white/5"
                onerror="this.style.opacity=0.3;" />
@@ -1079,11 +1024,9 @@ function renderAdminPersons() {
   }
   list.innerHTML = people.map(p => `
     <div class="admin-row" data-eng="${escapeHtml(p.engName)}">
-      <div class="col-span-2 truncate-cell text-wz-gold">${escapeHtml(p.engName)}</div>
-      <div class="col-span-2 truncate-cell">${escapeHtml(p.name)}</div>
-      <div class="col-span-3 truncate-cell text-white/70">${escapeHtml(p.dept)}</div>
-      <div class="col-span-2 truncate-cell text-white/70">${escapeHtml(p.role)}</div>
-      <div class="col-span-1 text-center">Lv.${p.level}</div>
+      <div class="col-span-3 truncate-cell text-wz-gold font-mono">${escapeHtml(p.engName)}</div>
+      <div class="col-span-3 truncate-cell">${escapeHtml(p.name)}</div>
+      <div class="col-span-4 truncate-cell text-white/70">${escapeHtml(p.dept)}</div>
       <div class="col-span-2 text-right">
         <button class="action-btn" data-act="editP"><i class="ri-edit-line"></i>编辑</button>
         <button class="action-btn danger" data-act="delP"><i class="ri-delete-bin-line"></i>删除</button>
@@ -1230,17 +1173,12 @@ function textareaField(label, id, value = '', rows = 2) {
     </div>`;
 }
 
-// ---- 策划表单 ----
 function openPersonForm(person) {
   const isEdit = !!person;
-  // 编辑时保留所有字段可改；新增时只需英文名+中文名+部门
   const body = isEdit ? `
     ${field('英文名 (唯一)', 'fEng', 'text', person?.engName || '', 'disabled')}
     ${field('中文名', 'fName', 'text', person?.name || '')}
     ${field('部门', 'fDept', 'text', person?.dept || '')}
-    ${field('职位', 'fRole', 'text', person?.role || '')}
-    ${field('等级', 'fLevel', 'number', person?.level || 1, 'min="1" max="99"')}
-    ${field('排序 (越小越靠前)', 'fSort', 'number', person?.sortOrder || 0)}
   ` : `
     ${field('英文名 (唯一)', 'fEng', 'text', '')}
     ${field('中文名', 'fName', 'text', '')}
@@ -1251,9 +1189,6 @@ function openPersonForm(person) {
       const payload = {
         name: $('#fName').value.trim(),
         dept: $('#fDept').value.trim(),
-        role: $('#fRole').value.trim(),
-        level: parseInt($('#fLevel').value || '1', 10) || 1,
-        sortOrder: parseInt($('#fSort').value || '0', 10) || 0,
       };
       if (!payload.name) { toast('中文名必填'); return; }
       await adminUpdatePerson(person.engName, payload);
@@ -1262,9 +1197,6 @@ function openPersonForm(person) {
         engName: $('#fEng').value.trim(),
         name: $('#fName').value.trim(),
         dept: $('#fDept').value.trim(),
-        role: '策划',
-        level: 1,
-        sortOrder: 0,
       };
       if (!payload.engName || !payload.name) { toast('英文名和中文名必填'); return; }
       await adminCreatePerson(payload);
@@ -1285,15 +1217,12 @@ function confirmDelPerson(person) {
   }).catch(e => toast(e.message || '删除失败'));
 }
 
-// ---- 荣誉表单 ----
 function openHonorForm(honor) {
   const isEdit = !!honor;
   const personEng = isEdit ? honor._personEngName || state.adminHonorPerson : state.adminHonorPerson;
-  // 从 people 找出当前策划（保证 new 时有 person）
   const person = people.find(p => p.engName === state.adminHonorPerson);
   const qualityOpts = Object.keys(QUALITY).map(k => ({ value: k, label: QUALITY[k].name }));
   const catOpts = Object.keys(CATEGORY).map(k => ({ value: k, label: CATEGORY[k] }));
-  // 新增时不展示"获得理由"字段；编辑时仍保留，方便修改已有数据
   const reasonField = isEdit ? textareaField('获得理由', 'fHReason', honor?.reason || '', 2) : '';
   const body = `
     <div class="text-xs text-white/50 mb-1">所属策划：<span class="text-wz-gold">${escapeHtml(person ? person.name : '')}</span> (${escapeHtml(personEng)})</div>
@@ -1314,7 +1243,6 @@ function openHonorForm(honor) {
       date: $('#fHDate').value,
       description: $('#fHDesc').value.trim(),
     };
-    // 编辑时才写入 reason；新增时不提交 reason 字段（后端默认空）
     if (isEdit) {
       payload.reason = $('#fHReason') ? $('#fHReason').value.trim() : '';
     }
@@ -1340,7 +1268,6 @@ function confirmDelHonor(honor) {
   }).catch(e => toast(e.message || '删除失败'));
 }
 
-// ---- 账号表单 ----
 function openAccountForm() {
   const body = `
     ${field('用户名（英文，唯一）', 'aUser', 'text', '')}
@@ -1429,7 +1356,6 @@ function bindMessageEvents() {
 }
 
 function refreshMessageUI() {
-  // 根据登录状态显示输入区
   const loginTip = $('#msgLoginTip');
   const inputWrap = $('#msgInputWrap');
   if (!loginTip || !inputWrap) return;
@@ -1442,14 +1368,14 @@ function refreshMessageUI() {
   }
 }
 
-async function loadMessages() {
+async function loadMessages(targetEng) {
   refreshMessageUI();
   const list = $('#msgList');
   const empty = $('#msgEmpty');
   const cnt = $('#msgCount');
   if (!list) return;
   try {
-    const msgs = await fetchMessages(100);
+    const msgs = await fetchMessages(100, targetEng || '');
     cnt && (cnt.textContent = msgs.length);
     if (!msgs.length) {
       list.innerHTML = '';
@@ -1489,7 +1415,7 @@ async function loadMessages() {
         try {
           await deleteMessage(id);
           toast('已删除');
-          loadMessages();
+          if (state.currentPerson) loadMessages(state.currentPerson.engName);
         } catch (e) { toast(e.message || '删除失败'); }
       });
     });
@@ -1500,6 +1426,7 @@ async function loadMessages() {
 
 async function doSubmitMessage() {
   if (!currentUser.isLoggedIn) { toast('请先登录'); openLoginModal(); return; }
+  if (!state.currentPerson) { toast('目标不明'); return; }
   const input = $('#msgInput');
   const content = (input.value || '').trim();
   if (!content) { toast('留言内容不能为空'); return; }
@@ -1507,11 +1434,11 @@ async function doSubmitMessage() {
   const btn = $('#msgSubmitBtn');
   btn.disabled = true;
   try {
-    await postMessage(content);
+    await postMessage(content, state.currentPerson.engName);
     input.value = '';
     $('#msgLen').textContent = '0';
     toast('留言已发布 ✨');
-    loadMessages();
+    loadMessages(state.currentPerson.engName);
   } catch (e) {
     toast(e.message || '发布失败');
   } finally {
@@ -1563,7 +1490,6 @@ function openAvatarModal() {
   if (name) name.textContent = '';
   if (tip) tip.classList.add('hidden');
   if (submit) submit.disabled = true;
-  // 展示当前审核状态
   fetchMyAvatarRequest().then(r => {
     if (!tip) return;
     if (r && r.hasRequest) {

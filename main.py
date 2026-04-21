@@ -122,23 +122,33 @@ def ensure_tables():
           INDEX idx_to (to_eng_name)
         ) DEFAULT CHARSET=utf8mb4;
         """,
-        # 留言板
+        # 留言板（target_eng_name 为被留言人的英文名；空表示全局留言板，向下兼容）
         """
         CREATE TABLE IF NOT EXISTS messages (
           id INT AUTO_INCREMENT PRIMARY KEY,
           author VARCHAR(64) NOT NULL,
           author_name VARCHAR(64) DEFAULT '',
+          target_eng_name VARCHAR(64) DEFAULT '',
           content TEXT NOT NULL,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-          INDEX idx_created (created_at)
+          INDEX idx_created (created_at),
+          INDEX idx_target (target_eng_name)
         ) DEFAULT CHARSET=utf8mb4;
         """,
+        # 兼容旧库：尝试加字段（忽略已存在错误）
+        "ALTER TABLE messages ADD COLUMN target_eng_name VARCHAR(64) DEFAULT '' AFTER author_name",
+        "ALTER TABLE messages ADD INDEX idx_target (target_eng_name)",
     ]
     try:
         with get_conn() as conn:
             with conn.cursor() as cur:
                 for sql in sqls:
-                    cur.execute(sql)
+                    try:
+                        cur.execute(sql)
+                    except Exception as _e:
+                        # ALTER TABLE 已经存在字段/索引会抛错，忽略即可
+                        if not (sql.strip().upper().startswith("ALTER")):
+                            raise
                 # 确保有 admin 账号
                 cur.execute("SELECT 1 FROM accounts WHERE username='admin'")
                 if not cur.fetchone():
@@ -1375,23 +1385,36 @@ def do_like(
 # ===== 留言板 =====
 class MessageIn(BaseModel):
     content: str
+    target: Optional[str] = ""
 
 
 @app.get("/api/messages")
-def list_messages(limit: int = Query(50, ge=1, le=200)):
+def list_messages(
+    limit: int = Query(50, ge=1, le=200),
+    target: Optional[str] = Query(None),
+):
+    """target 为空/None 返回全局留言板（空 target_eng_name）；否则返回指向某策划的留言。"""
     with get_conn() as conn:
         with conn.cursor() as cur:
-            cur.execute(
-                "SELECT id, author, author_name, content, created_at FROM messages "
-                "ORDER BY id DESC LIMIT %s",
-                (limit,),
-            )
+            if target:
+                cur.execute(
+                    "SELECT id, author, author_name, target_eng_name, content, created_at FROM messages "
+                    "WHERE target_eng_name=%s ORDER BY id DESC LIMIT %s",
+                    (target, limit),
+                )
+            else:
+                cur.execute(
+                    "SELECT id, author, author_name, target_eng_name, content, created_at FROM messages "
+                    "WHERE target_eng_name IS NULL OR target_eng_name='' ORDER BY id DESC LIMIT %s",
+                    (limit,),
+                )
             rows = cur.fetchall() or []
     return [
         {
             "id": r["id"],
             "author": r["author"],
             "authorName": r.get("author_name") or r["author"],
+            "target": r.get("target_eng_name") or "",
             "content": r["content"],
             "createdAt": r["created_at"].isoformat() if r.get("created_at") else "",
         }
@@ -1412,11 +1435,12 @@ def post_message(
     if len(content) > 500:
         raise HTTPException(status_code=400, detail="留言最多 500 字")
     author_name = user.get("chn_name") or user["username"]
+    target = (data.target or "").strip()
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute(
-                "INSERT INTO messages (author, author_name, content) VALUES (%s, %s, %s)",
-                (user["username"], author_name, content),
+                "INSERT INTO messages (author, author_name, target_eng_name, content) VALUES (%s, %s, %s, %s)",
+                (user["username"], author_name, target, content),
             )
             new_id = cur.lastrowid
     return {"ok": True, "id": new_id}
