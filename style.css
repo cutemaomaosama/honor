@@ -810,3 +810,116 @@ select option:hover {
   background-color: #2a2e4d;
   color: #f5c242;
 }
+
+/* =========================
+   人卡头像/点赞按钮/留言板/头像审核
+   ========================= */
+/* 卡片点击层：person-card 包裹内 a 链接（绝对定位），保证空白区域可跳转 */
+.person-card { position: relative; }
+.person-card > .relative { position: relative; z-index: 1; pointer-events: none; }
+.person-card .mini-badge-sm,
+.person-card .like-btn { pointer-events: auto; }
+
+/* 卡片头像图 */
+.card-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* 点赞按钮 */
+.like-btn {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 2px 4px;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  transition: all 0.2s;
+  line-height: 1;
+  min-width: 48px;
+}
+.like-btn i { font-size: 1rem; }
+.like-btn .like-count {
+  font-size: 0.7rem;
+  color: rgba(255, 255, 255, 0.55);
+}
+.like-btn:hover {
+  background: rgba(239, 68, 68, 0.12);
+  border-color: rgba(239, 68, 68, 0.4);
+  color: #fca5a5;
+  transform: translateY(-1px);
+}
+.like-btn.liked {
+  background: linear-gradient(135deg, #ff4d4d, #b02a37);
+  border-color: #ff4d4d;
+  color: #fff;
+  box-shadow: 0 0 10px rgba(255, 77, 77, 0.45);
+}
+.like-btn.liked i { animation: likePop 0.4s ease-out; }
+.like-btn.liked .like-count { color: #fff; font-weight: 700; }
+.like-btn.disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+.like-btn.disabled:hover {
+  transform: none;
+  background: rgba(255, 255, 255, 0.04);
+  color: rgba(255, 255, 255, 0.5);
+}
+@keyframes likePop {
+  0% { transform: scale(1); }
+  40% { transform: scale(1.35); }
+  100% { transform: scale(1); }
+}
+
+/* 留言板 */
+#msgList .msg-item {
+  animation: cardIn 0.3s ease-out both;
+}
+#msgList .msg-avatar {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* 头像上传弹窗 */
+#avatarModal.flex { display: flex; }
+#avatarDrop.hover,
+#avatarDrop:hover {
+  background: rgba(245, 194, 66, 0.04);
+}
+
+/* 管理台 - 头像审核卡片 */
+#adminAvatarList img {
+  background: rgba(255, 255, 255, 0.05);
+}
+
+/* 修改头像按钮 */
+#changeAvatarBtn {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3), 0 0 0 2px rgba(11, 16, 32, 0.8);
+}
+#changeAvatarBtn:hover {
+  filter: brightness(1.1);
+}
+
+/* 头像审核中标签动效 */
+#avatarPendingTag {
+  animation: pulseOrange 1.4s ease-in-out infinite;
+}
+@keyframes pulseOrange {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(251, 146, 60, 0.5); }
+  50% { box-shadow: 0 0 0 4px rgba(251, 146, 60, 0); }
+}
+
+/* rank-tab 里的小红点徽标 */
+#avatarPendingBadge {
+  vertical-align: middle;
+  line-height: 1;
+}

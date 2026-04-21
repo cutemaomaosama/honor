@@ -416,3 +416,52 @@ export async function adminResetPassword(username, newPassword) {
 export async function adminUpdateAccount(username, payload) {
   return apiJson('/api/admin/account/' + encodeURIComponent(username), { method: 'POST', body: payload });
 }
+
+// ========= 头像 =========
+// 返回一个可用于 <img src> 的 URL。加上时间戳避免缓存。
+export function avatarUrl(engName, bust = false) {
+  if (!engName) return '';
+  const u = '/api/avatar/' + encodeURIComponent(engName);
+  return bust ? (u + '?t=' + Date.now()) : u;
+}
+
+// 上传自己的头像（data URL），需要登录，提交审核
+export async function uploadMyAvatar(dataUrl) {
+  return apiJson('/api/avatar/upload', { method: 'POST', body: { dataUrl } });
+}
+
+// 查询当前用户自己的最新头像上传请求状态
+export async function fetchMyAvatarRequest() {
+  return apiJson('/api/avatar/my-request');
+}
+
+// ========= 管理员：头像审核 =========
+export async function adminListAvatarRequests(status = 'pending') {
+  return apiJson('/api/admin/avatar-requests?status=' + encodeURIComponent(status));
+}
+
+export async function adminReviewAvatar(id, action, reason = '') {
+  return apiJson('/api/admin/avatar-requests/' + id, { method: 'POST', body: { action, reason } });
+}
+
+// ========= 点赞 =========
+export async function fetchLikesSummary() {
+  return apiJson('/api/likes/summary?_t=' + Date.now());
+}
+
+export async function togglePersonLike(toEngName) {
+  return apiJson('/api/like', { method: 'POST', body: { toEngName } });
+}
+
+// ========= 留言板 =========
+export async function fetchMessages(limit = 50) {
+  return apiJson('/api/messages?limit=' + limit + '&_t=' + Date.now());
+}
+
+export async function postMessage(content) {
+  return apiJson('/api/messages', { method: 'POST', body: { content } });
+}
+
+export async function deleteMessage(id) {
+  return apiJson('/api/messages/' + id, { method: 'DELETE' });
+}

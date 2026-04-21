@@ -135,6 +135,44 @@
         <i class="ri-inbox-line text-5xl mb-2"></i>
         <p>没有找到匹配的策划</p>
       </div>
+
+      <!-- 留言板 -->
+      <div class="relative rounded-2xl overflow-hidden border border-wz-gold/30 bg-white/5 backdrop-blur mt-4">
+        <div class="absolute inset-0 opacity-20 bg-[radial-gradient(circle_at_20%_30%,_#5b2ca0,_transparent_50%)] pointer-events-none"></div>
+        <div class="relative p-5 md:p-6">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="text-xl md:text-2xl font-bold flex items-center gap-2">
+              <i class="ri-chat-quote-fill text-wz-gold"></i>
+              <span>留言板</span>
+              <span class="text-sm text-white/50 font-normal">Message Board</span>
+            </h2>
+            <div class="text-xs text-white/40"><span id="msgCount">0</span> 条留言</div>
+          </div>
+
+          <div class="mb-4">
+            <div id="msgLoginTip" class="hidden p-3 rounded-lg bg-wz-gold/10 border border-wz-gold/30 text-sm text-wz-gold text-center">
+              <i class="ri-information-line"></i> 请先登录后再发表留言
+            </div>
+            <div id="msgInputWrap" class="hidden">
+              <textarea id="msgInput" rows="2" maxlength="500"
+                class="w-full px-3 py-2 rounded-lg bg-white/5 border border-white/10 focus:border-wz-gold text-sm outline-none resize-none"
+                placeholder="留下你的祝福、感谢或建议…（最多 500 字）"></textarea>
+              <div class="flex justify-between items-center mt-2">
+                <span class="text-[11px] text-white/40"><span id="msgLen">0</span> / 500</span>
+                <button id="msgSubmitBtn" class="btn-save px-4 py-1.5 text-sm">
+                  <i class="ri-send-plane-fill mr-1"></i>发送
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <div id="msgList" class="space-y-3 max-h-[500px] overflow-y-auto pr-1"></div>
+          <div id="msgEmpty" class="hidden text-center py-10 text-white/40">
+            <i class="ri-chat-3-line text-4xl mb-1"></i>
+            <p class="text-sm">暂无留言，快来成为第一个吧～</p>
+          </div>
+        </div>
+      </div>
     </section>
 
     <!-- ============ 视图2：个人荣誉墙 ============ -->
@@ -169,6 +207,14 @@
             </div>
             <div class="absolute -bottom-1 -right-1 bg-wz-gold text-wz-dark text-xs font-bold px-2 py-0.5 rounded-full shadow-md">
               Lv.<span id="userLevel">12</span>
+            </div>
+            <!-- 本人可见：修改头像按钮 -->
+            <button id="changeAvatarBtn" class="hidden absolute top-0 right-0 w-8 h-8 rounded-full bg-wz-gold text-wz-dark flex items-center justify-center shadow-lg hover:scale-110 transition" title="修改头像（需管理员审核）">
+              <i class="ri-camera-fill"></i>
+            </button>
+            <!-- 审核状态小标 -->
+            <div id="avatarPendingTag" class="hidden absolute -top-1 -left-1 bg-orange-500 text-white text-[10px] font-bold px-1.5 py-0.5 rounded-full shadow">
+              审核中
             </div>
           </div>
 
@@ -336,6 +382,7 @@
           <button class="rank-tab active" data-t="person">策划管理</button>
           <button class="rank-tab" data-t="honor">荣誉管理</button>
           <button class="rank-tab" data-t="account">账号管理</button>
+          <button class="rank-tab" data-t="avatar">头像审核<span id="avatarPendingBadge" class="hidden ml-1 px-1.5 py-0.5 rounded-full bg-red-500 text-white text-[10px]">0</span></button>
         </div>
       </div>
 
@@ -404,6 +451,20 @@
           </div>
           <div id="adminAccountList"></div>
         </div>
+      </div>
+
+      <!-- 头像审核 -->
+      <div id="adminAvatarPanel" class="admin-panel hidden space-y-3">
+        <div class="flex flex-col md:flex-row md:items-center justify-between gap-2">
+          <div class="text-sm text-white/60">审核策划自助上传的头像</div>
+          <div class="flex gap-1 bg-white/5 p-1 rounded-lg border border-white/10" id="avatarFilterTabs">
+            <button class="rank-tab active" data-s="pending">待审核</button>
+            <button class="rank-tab" data-s="approved">已通过</button>
+            <button class="rank-tab" data-s="rejected">已拒绝</button>
+            <button class="rank-tab" data-s="all">全部</button>
+          </div>
+        </div>
+        <div id="adminAvatarList" class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3"></div>
       </div>
     </section>
 
@@ -508,6 +569,41 @@
   </div>
 
   <!-- 管理台（单独视图） -->
+  <!-- 头像上传弹窗 -->
+  <div id="avatarModal" class="fixed inset-0 bg-black/70 z-[80] hidden items-center justify-center p-4 backdrop-blur-sm">
+    <div class="relative bg-gradient-to-br from-wz-dark2 to-wz-dark rounded-2xl border border-wz-gold/40 max-w-md w-full p-6 shadow-2xl">
+      <button data-close="avatarModal" class="absolute top-3 right-3 w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition">
+        <i class="ri-close-line text-xl"></i>
+      </button>
+      <h3 class="text-xl font-bold text-wz-gold mb-2 flex items-center gap-2">
+        <i class="ri-camera-fill"></i>修改头像
+      </h3>
+      <p class="text-xs text-white/50 mb-4">请选择一张不超过 <span class="text-wz-gold">3MB</span> 的图片（支持 png/jpg/webp/gif），上传后需管理员审核通过才会生效。</p>
+
+      <div id="avatarDrop" class="rounded-xl border-2 border-dashed border-white/15 hover:border-wz-gold/60 transition p-6 text-center cursor-pointer">
+        <input type="file" id="avatarFile" accept="image/*" class="hidden" />
+        <div id="avatarPreviewWrap" class="hidden mb-3">
+          <img id="avatarPreview" alt="预览" class="w-32 h-32 rounded-full object-cover mx-auto border-4 border-wz-gold/50 shadow-lg" />
+        </div>
+        <div id="avatarDropHint">
+          <i class="ri-image-add-line text-4xl text-wz-gold/70"></i>
+          <p class="text-sm text-white/70 mt-2">点击或拖拽图片到这里</p>
+          <p class="text-xs text-white/40 mt-1">建议使用正方形头像，效果更佳</p>
+        </div>
+        <p id="avatarFileName" class="text-xs text-white/50 mt-2 truncate"></p>
+      </div>
+
+      <div id="avatarStatusTip" class="hidden mt-3 p-2 rounded-lg text-xs"></div>
+
+      <div class="flex gap-2 pt-4">
+        <button data-close="avatarModal" class="btn-cancel flex-1 py-2">取消</button>
+        <button id="avatarSubmitBtn" class="btn-save flex-1 py-2" disabled>
+          <i class="ri-upload-2-fill mr-1"></i>提交审核
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- 通用表单弹窗：用于新增/编辑策划或荣誉 -->
   <div id="formModal" class="fixed inset-0 bg-black/70 z-[80] hidden items-center justify-center p-4 backdrop-blur-sm">
     <div class="relative bg-gradient-to-br from-wz-dark2 to-wz-dark rounded-2xl border border-wz-gold/40 max-w-lg w-full p-6 shadow-2xl max-h-[90vh] flex flex-col">

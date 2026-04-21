@@ -5,7 +5,11 @@ import {
   apiLogin, apiLogout, apiChangePassword,
   adminCreatePerson, adminUpdatePerson, adminDeletePerson,
   adminCreateHonor, adminUpdateHonor, adminDeleteHonor,
-  adminListAccounts, adminCreateAccount, adminResetPassword, adminUpdateAccount
+  adminListAccounts, adminCreateAccount, adminResetPassword, adminUpdateAccount,
+  avatarUrl, uploadMyAvatar, fetchMyAvatarRequest,
+  adminListAvatarRequests, adminReviewAvatar,
+  fetchLikesSummary, togglePersonLike,
+  fetchMessages, postMessage, deleteMessage
 } from './data.js';
 
 // ========= 状态 =========
@@ -17,7 +21,13 @@ const state = {
   tmpBadges: new Set(),
   adminTab: 'person',
   adminHonorPerson: '',
-  formSubmit: null
+  formSubmit: null,
+  // 新增
+  likeCounts: {},          // { engName: count }
+  likedToday: new Set(),   // 当前用户今日已赞的 engName 集合
+  avatarBust: {},          // { engName: timestamp }
+  avatarPickedDataUrl: '', // 头像选择后暂存
+  adminAvatarStatus: 'pending'
 };
 
 const $ = (s) => document.querySelector(s);
@@ -27,6 +37,7 @@ const $$ = (s) => document.querySelectorAll(s);
 async function init() {
   await loadCurrentUser();
   await loadAllPersons();
+  await loadLikesSummary();
   updateLoginUI();
   renderPeopleStats();
   populateDeptFilter();
@@ -37,8 +48,21 @@ async function init() {
   bindEditEvents();
   bindAuthEvents();
   bindAdminEvents();
+  bindMessageEvents();
+  bindAvatarEvents();
   handleRoute();
   window.addEventListener('hashchange', handleRoute);
+}
+
+async function loadLikesSummary() {
+  try {
+    const data = await fetchLikesSummary();
+    state.likeCounts = data.counts || {};
+    state.likedToday = new Set(data.likedToday || []);
+  } catch (_) {
+    state.likeCounts = {};
+    state.likedToday = new Set();
+  }
 }
 
 function updateLoginUI() {
@@ -55,12 +79,15 @@ function updateLoginUI() {
     const showAdmin = currentUser.accountRole === 'admin';
     $('#adminNavBtn').classList.toggle('hidden', !showAdmin);
     $('#umAdminEntry').classList.toggle('hidden', !showAdmin);
+    if (showAdmin) refreshAvatarPendingBadge();
   } else {
     loginBtn.classList.remove('hidden');
     wrap.classList.add('hidden');
     $('#userMenuPanel').classList.add('hidden');
     $('#adminNavBtn').classList.add('hidden');
   }
+  // 同步留言板输入区可见性
+  refreshMessageUI();
 }
 
 // 头像加载
@@ -71,7 +98,8 @@ function loadAvatar(engName) {
   img.removeAttribute('src');
   fallback.classList.remove('hidden');
   if (!engName) return;
-  const url = `https://r.hrc.woa.com/photo/150/${encodeURIComponent(engName)}.png?default_when_absent=true`;
+  const bust = state.avatarBust[engName] || '';
+  const url = avatarUrl(engName) + (bust ? ('?t=' + bust) : '');
   const probe = new Image();
   probe.onload = () => {
     if (probe.naturalWidth > 1 && probe.naturalHeight > 1) {
@@ -139,7 +167,9 @@ function handleRoute() {
   } else {
     show('viewPeople');
     renderPeopleList();
-    loadAllPersons().then(() => {
+    loadMessages();
+    loadAllPersons().then(async () => {
+      await loadLikesSummary();
       if (!$('#viewPeople').classList.contains('hidden')) {
         renderPeopleStats();
         populateDeptFilter();
@@ -197,15 +227,28 @@ function renderPeopleList() {
       return order[a.quality] - order[b.quality];
     }).slice(0, 5);
     const selfTag = isSelf(p.id) ? '<span class="self-tag"><i class="ri-shield-check-fill"></i>本人</span>' : '';
+    const likeCount = state.likeCounts[p.engName] || 0;
+    const liked = state.likedToday.has(p.engName);
+    const canLike = currentUser.isLoggedIn && currentUser.username !== p.engName;
+    const likeTitle = !currentUser.isLoggedIn ? '登录后可点赞'
+      : (currentUser.username === p.engName ? '不能给自己点赞'
+      : (liked ? '今日已点赞，点击取消' : '点赞（每人每天一次）'));
+    const bust = state.avatarBust[p.engName] || '';
+    const avUrl = avatarUrl(p.engName) + (bust ? ('?t=' + bust) : '');
     return `
-      <a href="#/person/${p.id}" class="person-card group ${isSelf(p.id) ? 'is-self' : ''}" data-pid="${p.id}">
+      <div class="person-card group ${isSelf(p.id) ? 'is-self' : ''}" data-pid="${p.id}" data-eng="${escapeHtml(p.engName)}">
+        <a href="#/person/${p.id}" class="person-card-bg-link block absolute inset-0 z-0" aria-label="${escapeHtml(p.name)}"></a>
         <div class="person-card-bg"></div>
-        <div class="relative">
+        <div class="relative pointer-events-none">
           <div class="flex items-center gap-3 mb-3">
             <div class="relative flex-shrink-0">
               <div class="w-16 h-16 rounded-full p-[2px] bg-gradient-to-br from-wz-gold to-wz-red">
-                <div class="w-full h-full rounded-full bg-wz-dark2 flex items-center justify-center">
-                  <i class="ri-user-smile-fill text-3xl text-wz-gold"></i>
+                <div class="w-full h-full rounded-full bg-wz-dark2 overflow-hidden flex items-center justify-center">
+                  <img src="${avUrl}" alt="" class="card-avatar-img w-full h-full object-cover"
+                    onerror="this.style.display='none';this.nextElementSibling&&(this.nextElementSibling.style.display='flex');" />
+                  <div class="card-avatar-fallback w-full h-full flex items-center justify-center" style="display:none;">
+                    <i class="ri-user-smile-fill text-3xl text-wz-gold"></i>
+                  </div>
                 </div>
               </div>
               <div class="absolute -bottom-1 -right-1 bg-wz-gold text-wz-dark text-[10px] font-bold px-1.5 py-0 rounded-full">
@@ -227,17 +270,25 @@ function renderPeopleList() {
             ${p.honors.length > 5 ? `<div class="mini-badge-sm more">+${p.honors.length - 5}</div>` : ''}
             ${p.honors.length === 0 ? '<div class="text-xs text-white/30">暂无荣誉</div>' : ''}
           </div>
-          <div class="grid grid-cols-3 gap-2 pt-3 border-t border-white/10">
+          <div class="grid grid-cols-4 gap-2 pt-3 border-t border-white/10">
             <div class="text-center"><div class="text-sm font-bold text-wz-gold">${p.honors.length}</div><div class="text-[10px] text-white/50">荣誉</div></div>
             <div class="text-center"><div class="text-sm font-bold text-red-400">${legend}</div><div class="text-[10px] text-white/50">传说</div></div>
             <div class="text-center"><div class="text-sm font-bold text-orange-400">${p.score}</div><div class="text-[10px] text-white/50">荣誉值</div></div>
+            <div class="text-center">
+              <button class="like-btn ${liked ? 'liked' : ''} ${canLike ? '' : 'disabled'}"
+                      data-like-eng="${escapeHtml(p.engName)}"
+                      title="${likeTitle}">
+                <i class="${liked ? 'ri-heart-fill' : 'ri-heart-line'}"></i>
+                <span class="like-count">${likeCount}</span>
+              </button>
+            </div>
           </div>
         </div>
-      </a>
+      </div>
     `;
   }).join('');
 
-  // 为列表卡片内的每个 mini-badge-sm 绑定悬浮 tooltip
+  // 为列表卡片内的每个 mini-badge-sm 绑定悬浮 tooltip，以及点赞按钮
   grid.querySelectorAll('.person-card').forEach(card => {
     const pid = Number(card.dataset.pid);
     const person = people.find(x => x.id === pid);
@@ -246,11 +297,48 @@ function renderPeopleList() {
       const hid = Number(el.dataset.hid);
       const honor = person.honors.find(h => h.id === hid);
       if (!honor) return;
+      // 启用徽章交互层
+      el.style.pointerEvents = 'auto';
       el.addEventListener('mouseenter', (e) => { e.stopPropagation(); showTooltip(e, honor); });
       el.addEventListener('mousemove', (e) => { e.stopPropagation(); moveTooltip(e); });
       el.addEventListener('mouseleave', hideTooltip);
     });
+    const likeBtn = card.querySelector('.like-btn');
+    if (likeBtn) {
+      likeBtn.style.pointerEvents = 'auto';
+      likeBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        await handleLikeClick(card.dataset.eng);
+      });
+    }
   });
+}
+
+async function handleLikeClick(engName) {
+  if (!currentUser.isLoggedIn) { toast('请先登录后再点赞'); openLoginModal(); return; }
+  if (currentUser.username === engName) { toast('不能给自己点赞'); return; }
+  try {
+    const res = await togglePersonLike(engName);
+    state.likeCounts[engName] = res.total;
+    if (res.liked) state.likedToday.add(engName);
+    else state.likedToday.delete(engName);
+    // 局部刷新所有同 engName 的点赞按钮
+    document.querySelectorAll(`.like-btn[data-like-eng="${cssEscape(engName)}"]`).forEach(btn => {
+      btn.classList.toggle('liked', res.liked);
+      const icon = btn.querySelector('i');
+      if (icon) icon.className = res.liked ? 'ri-heart-fill' : 'ri-heart-line';
+      const cnt = btn.querySelector('.like-count');
+      if (cnt) cnt.textContent = res.total;
+    });
+    toast(res.liked ? '点赞成功 ❤' : '已取消点赞');
+  } catch (e) {
+    toast(e.message || '点赞失败');
+  }
+}
+
+function cssEscape(s) {
+  return String(s).replace(/["\\]/g, '\\$&');
 }
 
 function bindPeopleEvents() {
@@ -296,6 +384,17 @@ function renderPerson() {
   $('#editQuoteBtn').classList.toggle('hidden', !self);
   // 精选徽章现在自动按品质展示前 5 枚，不再需要手动管理
   $('#manageBadgesBtn').classList.add('hidden');
+  // 修改头像按钮：只有本人可见
+  $('#changeAvatarBtn').classList.toggle('hidden', !self);
+  // 审核中提示：只对本人查询
+  $('#avatarPendingTag').classList.add('hidden');
+  if (self) {
+    fetchMyAvatarRequest().then(r => {
+      if (r && r.hasRequest && r.status === 'pending') {
+        $('#avatarPendingTag').classList.remove('hidden');
+      }
+    }).catch(() => {});
+  }
   $('#quoteView').classList.remove('hidden');
   $('#quoteEdit').classList.add('hidden');
 
@@ -698,6 +797,7 @@ function bindGlobalEvents() {
       closeSimpleModal('loginModal');
       closeSimpleModal('pwdModal');
       closeSimpleModal('formModal');
+      closeSimpleModal('avatarModal');
     }
   });
   // 通用关闭按钮
@@ -705,7 +805,7 @@ function bindGlobalEvents() {
     btn.addEventListener('click', () => closeSimpleModal(btn.dataset.close));
   });
   // 点击遮罩关闭
-  ['loginModal', 'pwdModal', 'formModal'].forEach(id => {
+  ['loginModal', 'pwdModal', 'formModal', 'avatarModal'].forEach(id => {
     const m = document.getElementById(id);
     if (m) m.addEventListener('click', e => { if (e.target === m) closeSimpleModal(id); });
   });
@@ -768,6 +868,11 @@ async function doLogin() {
     toast('登录成功 ✨');
     updateLoginUI();
     await loadAllPersons();
+    await loadLikesSummary();
+    if (!$('#viewPeople').classList.contains('hidden')) {
+      renderPeopleList();
+      loadMessages();
+    }
     handleRoute();
   } catch (e) {
     toast(e.message || '登录失败');
@@ -780,9 +885,16 @@ async function doLogout() {
   await apiLogout();
   updateLoginUI();
   toast('已退出登录');
+  // 清空点赞状态
+  state.likedToday = new Set();
+  await loadLikesSummary();
   if (location.hash.startsWith('#/admin') || location.hash.startsWith('#/me')) {
     location.hash = '#/people';
   } else {
+    if (!$('#viewPeople').classList.contains('hidden')) {
+      renderPeopleList();
+      loadMessages();
+    }
     handleRoute();
   }
 }
@@ -838,6 +950,17 @@ function bindAdminEvents() {
       finally { btn.disabled = false; }
     }
   });
+  // 头像审核过滤 tab
+  const aft = $('#avatarFilterTabs');
+  if (aft) {
+    aft.addEventListener('click', (e) => {
+      const btn = e.target.closest('.rank-tab'); if (!btn) return;
+      $$('#avatarFilterTabs .rank-tab').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      state.adminAvatarStatus = btn.dataset.s || 'pending';
+      renderAdminAvatars();
+    });
+  }
 }
 
 function renderAdmin() {
@@ -854,6 +977,97 @@ function renderAdmin() {
   } else if (state.adminTab === 'account') {
     $('#adminAccountPanel').classList.remove('hidden');
     renderAdminAccounts();
+  } else if (state.adminTab === 'avatar') {
+    $('#adminAvatarPanel').classList.remove('hidden');
+    renderAdminAvatars();
+  }
+  // 刷新头像审核小红点
+  refreshAvatarPendingBadge();
+}
+
+async function refreshAvatarPendingBadge() {
+  if (!isAdmin()) return;
+  try {
+    const list = await adminListAvatarRequests('pending');
+    const badge = $('#avatarPendingBadge');
+    if (!badge) return;
+    if (Array.isArray(list) && list.length > 0) {
+      badge.textContent = list.length;
+      badge.classList.remove('hidden');
+    } else {
+      badge.classList.add('hidden');
+    }
+  } catch (_) {}
+}
+
+async function renderAdminAvatars() {
+  const container = $('#adminAvatarList');
+  if (!container) return;
+  container.innerHTML = '<div class="col-span-full p-6 text-center text-white/50 text-sm">加载中...</div>';
+  try {
+    const list = await adminListAvatarRequests(state.adminAvatarStatus || 'pending');
+    if (!Array.isArray(list) || list.length === 0) {
+      container.innerHTML = '<div class="col-span-full p-6 text-center text-white/50 text-sm">暂无相关头像请求</div>';
+      return;
+    }
+    container.innerHTML = list.map(r => {
+      const statusMap = {
+        pending: { label: '待审核', cls: 'bg-orange-500/20 text-orange-300 border-orange-400/40' },
+        approved: { label: '已通过', cls: 'bg-green-500/20 text-green-300 border-green-400/40' },
+        rejected: { label: '已拒绝', cls: 'bg-red-500/20 text-red-300 border-red-400/40' }
+      };
+      const st = statusMap[r.status] || statusMap.pending;
+      const showActions = r.status === 'pending';
+      return `
+        <div class="bg-white/5 border border-white/10 rounded-xl p-4 flex gap-3" data-id="${r.id}">
+          <img src="${escapeHtml(r.previewUrl)}" alt="预览"
+               class="w-24 h-24 rounded-xl object-cover border-2 border-wz-gold/40 flex-shrink-0 bg-white/5"
+               onerror="this.style.opacity=0.3;" />
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="font-bold text-wz-gold truncate">${escapeHtml(r.chnName || r.engName)}</span>
+              <span class="text-xs text-white/40 truncate">(${escapeHtml(r.engName)})</span>
+            </div>
+            <div class="text-[11px] text-white/50 mb-1">提交时间：${escapeHtml((r.createdAt || '').replace('T', ' ').slice(0, 16))}</div>
+            <span class="inline-block px-2 py-0.5 rounded-full text-[11px] border ${st.cls}">${st.label}</span>
+            ${r.reason ? `<div class="text-[11px] text-red-300 mt-1">拒绝原因：${escapeHtml(r.reason)}</div>` : ''}
+            ${showActions ? `
+              <div class="flex gap-2 mt-3">
+                <button class="action-btn" data-act="approve"><i class="ri-check-line"></i>通过</button>
+                <button class="action-btn danger" data-act="reject"><i class="ri-close-line"></i>拒绝</button>
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      `;
+    }).join('');
+    container.querySelectorAll('[data-id]').forEach(card => {
+      const id = Number(card.dataset.id);
+      card.querySelectorAll('[data-act]').forEach(btn => {
+        btn.addEventListener('click', async () => {
+          const act = btn.dataset.act;
+          if (act === 'approve') {
+            if (!confirm('通过该头像？')) return;
+            try {
+              await adminReviewAvatar(id, 'approve');
+              toast('已通过 ✔');
+              renderAdminAvatars();
+              refreshAvatarPendingBadge();
+            } catch (e) { toast(e.message || '操作失败'); }
+          } else if (act === 'reject') {
+            const reason = prompt('拒绝原因（可选）', '') || '';
+            try {
+              await adminReviewAvatar(id, 'reject', reason);
+              toast('已拒绝');
+              renderAdminAvatars();
+              refreshAvatarPendingBadge();
+            } catch (e) { toast(e.message || '操作失败'); }
+          }
+        });
+      });
+    });
+  } catch (e) {
+    container.innerHTML = `<div class="col-span-full p-6 text-center text-red-300 text-sm">加载失败: ${escapeHtml(e.message || '')}</div>`;
   }
 }
 
@@ -1194,6 +1408,211 @@ function openResetPwdForm(username) {
     closeSimpleModal('formModal');
     toast('密码已重置');
   });
+}
+
+// ========= 留言板 =========
+function bindMessageEvents() {
+  const input = $('#msgInput');
+  const submitBtn = $('#msgSubmitBtn');
+  const lenEl = $('#msgLen');
+  if (input) {
+    input.addEventListener('input', () => {
+      lenEl.textContent = input.value.length;
+    });
+    input.addEventListener('keydown', (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
+        doSubmitMessage();
+      }
+    });
+  }
+  if (submitBtn) submitBtn.addEventListener('click', doSubmitMessage);
+}
+
+function refreshMessageUI() {
+  // 根据登录状态显示输入区
+  const loginTip = $('#msgLoginTip');
+  const inputWrap = $('#msgInputWrap');
+  if (!loginTip || !inputWrap) return;
+  if (currentUser.isLoggedIn) {
+    loginTip.classList.add('hidden');
+    inputWrap.classList.remove('hidden');
+  } else {
+    loginTip.classList.remove('hidden');
+    inputWrap.classList.add('hidden');
+  }
+}
+
+async function loadMessages() {
+  refreshMessageUI();
+  const list = $('#msgList');
+  const empty = $('#msgEmpty');
+  const cnt = $('#msgCount');
+  if (!list) return;
+  try {
+    const msgs = await fetchMessages(100);
+    cnt && (cnt.textContent = msgs.length);
+    if (!msgs.length) {
+      list.innerHTML = '';
+      empty && empty.classList.remove('hidden');
+      return;
+    }
+    empty && empty.classList.add('hidden');
+    list.innerHTML = msgs.map(m => {
+      const canDel = currentUser.isLoggedIn && (currentUser.accountRole === 'admin' || currentUser.username === m.author);
+      const t = (m.createdAt || '').replace('T', ' ').slice(0, 16);
+      const bust = state.avatarBust[m.author] || '';
+      const av = avatarUrl(m.author) + (bust ? ('?t=' + bust) : '');
+      return `
+        <div class="msg-item flex gap-3 p-3 rounded-xl bg-white/5 border border-white/5 hover:border-wz-gold/30 transition" data-mid="${m.id}">
+          <div class="flex-shrink-0 w-10 h-10 rounded-full overflow-hidden bg-wz-dark2 flex items-center justify-center">
+            <img src="${av}" class="msg-avatar w-full h-full object-cover"
+                 onerror="this.style.display='none';this.nextElementSibling&&(this.nextElementSibling.style.display='flex');" />
+            <div class="w-full h-full items-center justify-center" style="display:none;">
+              <i class="ri-user-smile-fill text-wz-gold"></i>
+            </div>
+          </div>
+          <div class="flex-1 min-w-0">
+            <div class="flex items-center gap-2 mb-1">
+              <span class="font-semibold text-wz-gold text-sm truncate">${escapeHtml(m.authorName || m.author)}</span>
+              <span class="text-[11px] text-white/40">${escapeHtml(t)}</span>
+              ${canDel ? `<button class="ml-auto text-xs text-red-300 hover:text-red-400" data-del="${m.id}" title="删除"><i class="ri-delete-bin-line"></i></button>` : ''}
+            </div>
+            <p class="text-sm text-white/85 whitespace-pre-wrap break-words">${escapeHtml(m.content)}</p>
+          </div>
+        </div>
+      `;
+    }).join('');
+    list.querySelectorAll('[data-del]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const id = Number(btn.dataset.del);
+        if (!confirm('确定删除这条留言？')) return;
+        try {
+          await deleteMessage(id);
+          toast('已删除');
+          loadMessages();
+        } catch (e) { toast(e.message || '删除失败'); }
+      });
+    });
+  } catch (e) {
+    list.innerHTML = `<div class="p-3 text-center text-red-300 text-xs">留言加载失败：${escapeHtml(e.message || '')}</div>`;
+  }
+}
+
+async function doSubmitMessage() {
+  if (!currentUser.isLoggedIn) { toast('请先登录'); openLoginModal(); return; }
+  const input = $('#msgInput');
+  const content = (input.value || '').trim();
+  if (!content) { toast('留言内容不能为空'); return; }
+  if (content.length > 500) { toast('留言最多 500 字'); return; }
+  const btn = $('#msgSubmitBtn');
+  btn.disabled = true;
+  try {
+    await postMessage(content);
+    input.value = '';
+    $('#msgLen').textContent = '0';
+    toast('留言已发布 ✨');
+    loadMessages();
+  } catch (e) {
+    toast(e.message || '发布失败');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ========= 头像上传 =========
+function bindAvatarEvents() {
+  const btn = $('#changeAvatarBtn');
+  if (btn) btn.addEventListener('click', openAvatarModal);
+  const drop = $('#avatarDrop');
+  const file = $('#avatarFile');
+  if (drop && file) {
+    drop.addEventListener('click', () => file.click());
+    drop.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      drop.classList.add('border-wz-gold');
+    });
+    drop.addEventListener('dragleave', () => drop.classList.remove('border-wz-gold'));
+    drop.addEventListener('drop', (e) => {
+      e.preventDefault();
+      drop.classList.remove('border-wz-gold');
+      const f = e.dataTransfer.files && e.dataTransfer.files[0];
+      if (f) handleAvatarFile(f);
+    });
+    file.addEventListener('change', (e) => {
+      const f = e.target.files && e.target.files[0];
+      if (f) handleAvatarFile(f);
+    });
+  }
+  const submit = $('#avatarSubmitBtn');
+  if (submit) submit.addEventListener('click', doSubmitAvatar);
+  const modal = $('#avatarModal');
+  if (modal) modal.addEventListener('click', (e) => {
+    if (e.target === modal) closeSimpleModal('avatarModal');
+  });
+}
+
+function openAvatarModal() {
+  state.avatarPickedDataUrl = '';
+  const preview = $('#avatarPreview');
+  const wrap = $('#avatarPreviewWrap');
+  const name = $('#avatarFileName');
+  const tip = $('#avatarStatusTip');
+  const submit = $('#avatarSubmitBtn');
+  if (preview) preview.src = '';
+  if (wrap) wrap.classList.add('hidden');
+  if (name) name.textContent = '';
+  if (tip) tip.classList.add('hidden');
+  if (submit) submit.disabled = true;
+  // 展示当前审核状态
+  fetchMyAvatarRequest().then(r => {
+    if (!tip) return;
+    if (r && r.hasRequest) {
+      if (r.status === 'pending') {
+        tip.className = 'mt-3 p-2 rounded-lg text-xs bg-orange-500/10 border border-orange-400/40 text-orange-300';
+        tip.innerHTML = '<i class="ri-time-line"></i> 你已有头像在审核中，新提交会覆盖旧请求。';
+        tip.classList.remove('hidden');
+      } else if (r.status === 'rejected') {
+        tip.className = 'mt-3 p-2 rounded-lg text-xs bg-red-500/10 border border-red-400/40 text-red-300';
+        tip.innerHTML = `<i class="ri-error-warning-line"></i> 上次审核被拒绝${r.reason ? '：' + escapeHtml(r.reason) : ''}，可重新上传。`;
+        tip.classList.remove('hidden');
+      }
+    }
+  }).catch(() => {});
+  openSimpleModal('avatarModal');
+}
+
+function handleAvatarFile(f) {
+  if (!/^image\//.test(f.type)) { toast('请选择图片文件'); return; }
+  if (f.size > 3 * 1024 * 1024) { toast('图片大小不能超过 3MB'); return; }
+  const reader = new FileReader();
+  reader.onload = () => {
+    state.avatarPickedDataUrl = reader.result || '';
+    const preview = $('#avatarPreview');
+    const wrap = $('#avatarPreviewWrap');
+    const name = $('#avatarFileName');
+    if (preview) preview.src = state.avatarPickedDataUrl;
+    if (wrap) wrap.classList.remove('hidden');
+    if (name) name.textContent = f.name;
+    $('#avatarSubmitBtn').disabled = !state.avatarPickedDataUrl;
+  };
+  reader.readAsDataURL(f);
+}
+
+async function doSubmitAvatar() {
+  if (!currentUser.isLoggedIn) { toast('请先登录'); return; }
+  if (!state.avatarPickedDataUrl) { toast('请选择图片'); return; }
+  const btn = $('#avatarSubmitBtn');
+  btn.disabled = true;
+  try {
+    await uploadMyAvatar(state.avatarPickedDataUrl);
+    toast('已提交，等待管理员审核 ⏳');
+    closeSimpleModal('avatarModal');
+    $('#avatarPendingTag').classList.remove('hidden');
+  } catch (e) {
+    toast(e.message || '上传失败');
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 document.addEventListener('DOMContentLoaded', init);

@@ -1,9 +1,12 @@
 import os
 import json
+import base64
 import secrets
+import re
+from datetime import datetime, date
 from typing import List, Optional
 from fastapi import FastAPI, HTTPException, Header, Query
-from fastapi.responses import RedirectResponse
+from fastapi.responses import RedirectResponse, FileResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 import pymysql
@@ -83,6 +86,51 @@ def ensure_tables():
           reason TEXT,
           updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
           INDEX idx_person (person_eng_name)
+        ) DEFAULT CHARSET=utf8mb4;
+        """,
+        # 已批准的自定义头像（文件保存到 static/avatars/ 下）
+        """
+        CREATE TABLE IF NOT EXISTS avatars (
+          eng_name VARCHAR(64) NOT NULL PRIMARY KEY,
+          filename VARCHAR(128) NOT NULL,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) DEFAULT CHARSET=utf8mb4;
+        """,
+        # 头像上传审核请求
+        """
+        CREATE TABLE IF NOT EXISTS avatar_requests (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          eng_name VARCHAR(64) NOT NULL,
+          filename VARCHAR(128) NOT NULL,
+          status VARCHAR(16) NOT NULL DEFAULT 'pending',
+          reason VARCHAR(255) DEFAULT '',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          reviewed_at TIMESTAMP NULL DEFAULT NULL,
+          INDEX idx_status (status),
+          INDEX idx_eng (eng_name)
+        ) DEFAULT CHARSET=utf8mb4;
+        """,
+        # 点赞记录：一人对另一人一天一赞
+        """
+        CREATE TABLE IF NOT EXISTS likes (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          from_user VARCHAR(64) NOT NULL,
+          to_eng_name VARCHAR(64) NOT NULL,
+          like_date DATE NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          UNIQUE KEY uk_from_to_date (from_user, to_eng_name, like_date),
+          INDEX idx_to (to_eng_name)
+        ) DEFAULT CHARSET=utf8mb4;
+        """,
+        # 留言板
+        """
+        CREATE TABLE IF NOT EXISTS messages (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          author VARCHAR(64) NOT NULL,
+          author_name VARCHAR(64) DEFAULT '',
+          content TEXT NOT NULL,
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          INDEX idx_created (created_at)
         ) DEFAULT CHARSET=utf8mb4;
         """,
     ]
@@ -967,6 +1015,430 @@ def admin_delete_honor(
     with get_conn() as conn:
         with conn.cursor() as cur:
             cur.execute("DELETE FROM honors WHERE id=%s", (honor_id,))
+    return {"ok": True}
+
+
+# ===== 头像系统 =====
+# 默认头像目录：static/default_avatars/{engName}.png|jpg|jpeg|webp
+# 自定义审核通过头像：static/avatars/{engName}.{ext}
+# 待审核头像：static/avatars_pending/{id}.{ext}
+_BASE_DIR = os.path.dirname(os.path.abspath(__file__))
+_STATIC_DIR = os.path.join(_BASE_DIR, "static")
+_DEFAULT_AVATAR_DIR = os.path.join(_STATIC_DIR, "default_avatars")
+_AVATAR_DIR = os.path.join(_STATIC_DIR, "avatars")
+_AVATAR_PENDING_DIR = os.path.join(_STATIC_DIR, "avatars_pending")
+for _d in (_STATIC_DIR, _DEFAULT_AVATAR_DIR, _AVATAR_DIR, _AVATAR_PENDING_DIR):
+    os.makedirs(_d, exist_ok=True)
+
+_ALLOWED_EXTS = ("png", "jpg", "jpeg", "webp", "gif")
+
+
+def _find_default_avatar(eng_name: str) -> Optional[str]:
+    """在 default_avatars 目录里找匹配 eng_name 的图片（不区分大小写）"""
+    if not eng_name:
+        return None
+    try:
+        for fn in os.listdir(_DEFAULT_AVATAR_DIR):
+            name, _, ext = fn.rpartition(".")
+            if ext.lower() in _ALLOWED_EXTS and name.lower() == eng_name.lower():
+                return os.path.join(_DEFAULT_AVATAR_DIR, fn)
+    except Exception:
+        pass
+    return None
+
+
+@app.get("/api/avatar/{eng_name}")
+def get_avatar(eng_name: str):
+    eng_name = (eng_name or "").strip()
+    if not eng_name:
+        raise HTTPException(status_code=400, detail="engName 不能为空")
+    # 1) 已批准的自定义头像优先
+    try:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute("SELECT filename FROM avatars WHERE eng_name=%s", (eng_name,))
+                row = cur.fetchone()
+                if row and row.get("filename"):
+                    path = os.path.join(_AVATAR_DIR, row["filename"])
+                    if os.path.exists(path):
+                        return FileResponse(path)
+    except Exception:
+        pass
+    # 2) 默认头像文件夹
+    default_path = _find_default_avatar(eng_name)
+    if default_path:
+        return FileResponse(default_path)
+    # 3) 无头像：返回 204 让前端回退
+    return Response(status_code=204)
+
+
+class AvatarUploadIn(BaseModel):
+    # 格式: "data:image/png;base64,xxxxx"
+    dataUrl: str
+
+
+@app.post("/api/avatar/upload")
+def avatar_upload(
+    data: AvatarUploadIn,
+    authorization: Optional[str] = Header(None),
+    token: Optional[str] = Query(None),
+):
+    user = _require_user(authorization, token)
+    eng_name = user["username"]
+    # 解析 data URL
+    m = re.match(r"^data:image/(png|jpe?g|webp|gif);base64,([A-Za-z0-9+/=]+)$", data.dataUrl or "")
+    if not m:
+        raise HTTPException(status_code=400, detail="图片格式不支持，请选择 png/jpg/webp/gif")
+    ext = m.group(1).lower().replace("jpeg", "jpg")
+    try:
+        raw = base64.b64decode(m.group(2))
+    except Exception:
+        raise HTTPException(status_code=400, detail="图片数据解析失败")
+    if len(raw) > 3 * 1024 * 1024:  # 3MB
+        raise HTTPException(status_code=400, detail="图片大小不能超过 3MB")
+    # 先写 DB 拿到 id，再把文件存到 pending
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            # 同一个人有 pending 的先清掉（覆盖式：以最新一次为准）
+            cur.execute(
+                "SELECT id, filename FROM avatar_requests WHERE eng_name=%s AND status='pending'",
+                (eng_name,),
+            )
+            olds = cur.fetchall() or []
+            for o in olds:
+                try:
+                    op = os.path.join(_AVATAR_PENDING_DIR, o["filename"])
+                    if os.path.exists(op):
+                        os.remove(op)
+                except Exception:
+                    pass
+                cur.execute("DELETE FROM avatar_requests WHERE id=%s", (o["id"],))
+            # 插入新请求（临时文件名占位）
+            cur.execute(
+                "INSERT INTO avatar_requests (eng_name, filename, status) VALUES (%s, %s, 'pending')",
+                (eng_name, ""),
+            )
+            req_id = cur.lastrowid
+            filename = f"{req_id}_{eng_name}.{ext}"
+            cur.execute(
+                "UPDATE avatar_requests SET filename=%s WHERE id=%s",
+                (filename, req_id),
+            )
+    # 写磁盘
+    try:
+        with open(os.path.join(_AVATAR_PENDING_DIR, filename), "wb") as f:
+            f.write(raw)
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"保存图片失败: {e}")
+    return {"ok": True, "id": req_id, "status": "pending"}
+
+
+@app.get("/api/avatar/pending/{req_id}")
+def get_pending_avatar(req_id: int):
+    """管理员审核时查看待审核图片"""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT filename FROM avatar_requests WHERE id=%s", (req_id,))
+            row = cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="记录不存在")
+    path = os.path.join(_AVATAR_PENDING_DIR, row["filename"])
+    if not os.path.exists(path):
+        raise HTTPException(status_code=404, detail="图片文件不存在")
+    return FileResponse(path)
+
+
+@app.get("/api/avatar/my-request")
+def my_avatar_request(
+    authorization: Optional[str] = Header(None),
+    token: Optional[str] = Query(None),
+):
+    """当前用户是否有待审核的头像（给前端一个提示）"""
+    user = _require_user(authorization, token)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, status, reason, created_at FROM avatar_requests "
+                "WHERE eng_name=%s ORDER BY id DESC LIMIT 1",
+                (user["username"],),
+            )
+            row = cur.fetchone()
+    if not row:
+        return {"hasRequest": False}
+    return {
+        "hasRequest": True,
+        "id": row["id"],
+        "status": row["status"],
+        "reason": row.get("reason") or "",
+        "createdAt": row["created_at"].isoformat() if row.get("created_at") else "",
+    }
+
+
+# ---- 管理员：头像审核 ----
+@app.get("/api/admin/avatar-requests")
+def admin_list_avatar_requests(
+    authorization: Optional[str] = Header(None),
+    token: Optional[str] = Query(None),
+    status: str = Query("pending"),
+):
+    _require_admin(authorization, token)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            if status == "all":
+                cur.execute(
+                    "SELECT id, eng_name, filename, status, reason, created_at, reviewed_at "
+                    "FROM avatar_requests ORDER BY id DESC LIMIT 200"
+                )
+            else:
+                cur.execute(
+                    "SELECT id, eng_name, filename, status, reason, created_at, reviewed_at "
+                    "FROM avatar_requests WHERE status=%s ORDER BY id DESC LIMIT 200",
+                    (status,),
+                )
+            rows = cur.fetchall() or []
+            # 关联中文名
+            eng_names = list({r["eng_name"] for r in rows})
+            name_map = {}
+            if eng_names:
+                q = ",".join(["%s"] * len(eng_names))
+                cur.execute(f"SELECT eng_name, name FROM persons WHERE eng_name IN ({q})", eng_names)
+                for r in cur.fetchall() or []:
+                    name_map[r["eng_name"]] = r["name"]
+    return [
+        {
+            "id": r["id"],
+            "engName": r["eng_name"],
+            "chnName": name_map.get(r["eng_name"], ""),
+            "status": r["status"],
+            "reason": r.get("reason") or "",
+            "filename": r["filename"],
+            "createdAt": r["created_at"].isoformat() if r.get("created_at") else "",
+            "reviewedAt": r["reviewed_at"].isoformat() if r.get("reviewed_at") else "",
+            "previewUrl": f"/api/avatar/pending/{r['id']}",
+        }
+        for r in rows
+    ]
+
+
+class AvatarReviewIn(BaseModel):
+    action: str  # approve | reject
+    reason: Optional[str] = ""
+
+
+@app.post("/api/admin/avatar-requests/{req_id}")
+def admin_review_avatar(
+    req_id: int,
+    data: AvatarReviewIn,
+    authorization: Optional[str] = Header(None),
+    token: Optional[str] = Query(None),
+):
+    _require_admin(authorization, token)
+    if data.action not in ("approve", "reject"):
+        raise HTTPException(status_code=400, detail="action 非法")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, eng_name, filename, status FROM avatar_requests WHERE id=%s", (req_id,)
+            )
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="记录不存在")
+            if row["status"] != "pending":
+                raise HTTPException(status_code=400, detail="该请求已处理")
+            eng_name = row["eng_name"]
+            filename = row["filename"]
+            pending_path = os.path.join(_AVATAR_PENDING_DIR, filename)
+
+            if data.action == "approve":
+                if not os.path.exists(pending_path):
+                    raise HTTPException(status_code=400, detail="待审核图片丢失")
+                ext = filename.rsplit(".", 1)[-1].lower()
+                final_name = f"{eng_name}.{ext}"
+                final_path = os.path.join(_AVATAR_DIR, final_name)
+                # 清理该用户其它扩展名的旧图
+                for fn in os.listdir(_AVATAR_DIR):
+                    base, _, e = fn.rpartition(".")
+                    if base.lower() == eng_name.lower() and fn != final_name:
+                        try:
+                            os.remove(os.path.join(_AVATAR_DIR, fn))
+                        except Exception:
+                            pass
+                try:
+                    # 用二进制拷贝，避免跨盘 rename 异常
+                    with open(pending_path, "rb") as fsrc, open(final_path, "wb") as fdst:
+                        fdst.write(fsrc.read())
+                    os.remove(pending_path)
+                except Exception as e:
+                    raise HTTPException(status_code=500, detail=f"保存头像失败: {e}")
+                # 写 avatars 表
+                cur.execute("SELECT 1 FROM avatars WHERE eng_name=%s", (eng_name,))
+                if cur.fetchone():
+                    cur.execute(
+                        "UPDATE avatars SET filename=%s WHERE eng_name=%s",
+                        (final_name, eng_name),
+                    )
+                else:
+                    cur.execute(
+                        "INSERT INTO avatars (eng_name, filename) VALUES (%s, %s)",
+                        (eng_name, final_name),
+                    )
+                cur.execute(
+                    "UPDATE avatar_requests SET status='approved', reviewed_at=CURRENT_TIMESTAMP WHERE id=%s",
+                    (req_id,),
+                )
+            else:
+                # 拒绝：删除待审文件
+                try:
+                    if os.path.exists(pending_path):
+                        os.remove(pending_path)
+                except Exception:
+                    pass
+                cur.execute(
+                    "UPDATE avatar_requests SET status='rejected', reason=%s, reviewed_at=CURRENT_TIMESTAMP WHERE id=%s",
+                    (data.reason or "", req_id),
+                )
+    return {"ok": True}
+
+
+# ===== 点赞系统 =====
+@app.get("/api/likes/summary")
+def likes_summary(
+    authorization: Optional[str] = Header(None),
+    token: Optional[str] = Query(None),
+):
+    """返回 {engName: count} 以及当前用户今日点赞名单 likedToday: [engName,...]"""
+    user = _get_user_by_token(
+        (authorization[7:].strip() if authorization and authorization.lower().startswith("bearer ") else None) or token
+    )
+    today = date.today().isoformat()
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT to_eng_name, COUNT(*) AS c FROM likes GROUP BY to_eng_name")
+            counts = {r["to_eng_name"]: int(r["c"]) for r in (cur.fetchall() or [])}
+            liked_today = []
+            if user:
+                cur.execute(
+                    "SELECT to_eng_name FROM likes WHERE from_user=%s AND like_date=%s",
+                    (user["username"], today),
+                )
+                liked_today = [r["to_eng_name"] for r in (cur.fetchall() or [])]
+    return {"counts": counts, "likedToday": liked_today}
+
+
+class LikeIn(BaseModel):
+    toEngName: str
+
+
+@app.post("/api/like")
+def do_like(
+    data: LikeIn,
+    authorization: Optional[str] = Header(None),
+    token: Optional[str] = Query(None),
+):
+    """一人对另一人一天只能点一个赞；二次点击取消（同一天同一对象）"""
+    user = _require_user(authorization, token)
+    from_user = user["username"]
+    to_eng = (data.toEngName or "").strip()
+    if not to_eng:
+        raise HTTPException(status_code=400, detail="目标不能为空")
+    if to_eng == from_user:
+        raise HTTPException(status_code=400, detail="不能给自己点赞")
+    today = date.today().isoformat()
+    liked = False
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT 1 FROM persons WHERE eng_name=%s", (to_eng,),
+            )
+            if not cur.fetchone():
+                raise HTTPException(status_code=404, detail="目标策划不存在")
+            cur.execute(
+                "SELECT id FROM likes WHERE from_user=%s AND to_eng_name=%s AND like_date=%s",
+                (from_user, to_eng, today),
+            )
+            row = cur.fetchone()
+            if row:
+                # 取消
+                cur.execute("DELETE FROM likes WHERE id=%s", (row["id"],))
+                liked = False
+            else:
+                cur.execute(
+                    "INSERT INTO likes (from_user, to_eng_name, like_date) VALUES (%s, %s, %s)",
+                    (from_user, to_eng, today),
+                )
+                liked = True
+            cur.execute("SELECT COUNT(*) AS c FROM likes WHERE to_eng_name=%s", (to_eng,))
+            total = int((cur.fetchone() or {"c": 0})["c"])
+    return {"liked": liked, "total": total, "toEngName": to_eng}
+
+
+# ===== 留言板 =====
+class MessageIn(BaseModel):
+    content: str
+
+
+@app.get("/api/messages")
+def list_messages(limit: int = Query(50, ge=1, le=200)):
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, author, author_name, content, created_at FROM messages "
+                "ORDER BY id DESC LIMIT %s",
+                (limit,),
+            )
+            rows = cur.fetchall() or []
+    return [
+        {
+            "id": r["id"],
+            "author": r["author"],
+            "authorName": r.get("author_name") or r["author"],
+            "content": r["content"],
+            "createdAt": r["created_at"].isoformat() if r.get("created_at") else "",
+        }
+        for r in rows
+    ]
+
+
+@app.post("/api/messages")
+def post_message(
+    data: MessageIn,
+    authorization: Optional[str] = Header(None),
+    token: Optional[str] = Query(None),
+):
+    user = _require_user(authorization, token)
+    content = (data.content or "").strip()
+    if not content:
+        raise HTTPException(status_code=400, detail="留言内容不能为空")
+    if len(content) > 500:
+        raise HTTPException(status_code=400, detail="留言最多 500 字")
+    author_name = user.get("chn_name") or user["username"]
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO messages (author, author_name, content) VALUES (%s, %s, %s)",
+                (user["username"], author_name, content),
+            )
+            new_id = cur.lastrowid
+    return {"ok": True, "id": new_id}
+
+
+@app.delete("/api/messages/{msg_id}")
+def delete_message(
+    msg_id: int,
+    authorization: Optional[str] = Header(None),
+    token: Optional[str] = Query(None),
+):
+    """作者或管理员可删除"""
+    user = _require_user(authorization, token)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("SELECT author FROM messages WHERE id=%s", (msg_id,))
+            row = cur.fetchone()
+            if not row:
+                raise HTTPException(status_code=404, detail="留言不存在")
+            if user["role"] != "admin" and row["author"] != user["username"]:
+                raise HTTPException(status_code=403, detail="没有权限删除")
+            cur.execute("DELETE FROM messages WHERE id=%s", (msg_id,))
     return {"ok": True}
 
 
