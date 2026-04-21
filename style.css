@@ -658,3 +658,138 @@ header .nav-btn { text-decoration: none; display: inline-flex; align-items: cent
   from { opacity: 0; transform: translate(-50%, -6px); }
   to { opacity: 1; transform: translate(-50%, 0); }
 }
+
+/* =========================
+   用户菜单 & 管理台
+   ========================= */
+.user-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  width: 100%;
+  padding: 0.55rem 1rem;
+  font-size: 0.85rem;
+  color: rgba(255, 255, 255, 0.8);
+  transition: background 0.15s;
+  background: transparent;
+  border: none;
+  text-align: left;
+  cursor: pointer;
+}
+.user-menu-item:hover {
+  background: rgba(245, 194, 66, 0.12);
+  color: #f5c242;
+}
+.user-menu-item.text-red-300:hover {
+  background: rgba(239, 68, 68, 0.15);
+  color: #fca5a5;
+}
+
+/* 登录/弹窗统一显示 */
+#loginModal.flex, #pwdModal.flex, #formModal.flex { display: flex; }
+
+/* 管理台行 */
+.admin-row {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  align-items: center;
+  padding: 0.7rem 1rem;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+  font-size: 0.85rem;
+  transition: background 0.2s;
+}
+.admin-row:hover {
+  background: rgba(245, 194, 66, 0.05);
+}
+.admin-row:last-child { border-bottom: none; }
+.admin-row .truncate-cell {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.3rem 0.6rem;
+  border-radius: 0.4rem;
+  font-size: 0.75rem;
+  border: 1px solid transparent;
+  background: rgba(255, 255, 255, 0.06);
+  color: rgba(255, 255, 255, 0.85);
+  cursor: pointer;
+  transition: all 0.15s;
+  margin-left: 0.25rem;
+}
+.action-btn:hover {
+  background: rgba(245, 194, 66, 0.2);
+  color: #f5c242;
+  border-color: rgba(245, 194, 66, 0.4);
+}
+.action-btn.danger:hover {
+  background: rgba(239, 68, 68, 0.2);
+  color: #fca5a5;
+  border-color: rgba(239, 68, 68, 0.4);
+}
+
+.quality-pill {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+.quality-pill.legend { background: #f5c242; color: #3a0c14; }
+.quality-pill.epic { background: #b266ff; color: #1a0c2e; }
+.quality-pill.rare { background: #4da6ff; color: #0a1a30; }
+.quality-pill.common { background: #9ca3af; color: #1f2433; }
+
+.role-pill {
+  display: inline-block;
+  padding: 1px 8px;
+  border-radius: 9999px;
+  font-size: 0.7rem;
+  font-weight: 600;
+}
+.role-pill.admin {
+  background: linear-gradient(135deg, #f5c242, #e3a93c);
+  color: #0b1020;
+}
+.role-pill.user {
+  background: rgba(255, 255, 255, 0.1);
+  color: rgba(255, 255, 255, 0.8);
+}
+
+/* 表单字段 */
+.form-field label {
+  display: block;
+  font-size: 0.75rem;
+  color: rgba(255, 255, 255, 0.6);
+  margin-bottom: 0.25rem;
+}
+.form-field input,
+.form-field select,
+.form-field textarea {
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border-radius: 0.5rem;
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  color: #fff;
+  font-size: 0.85rem;
+  outline: none;
+  transition: border-color 0.15s;
+}
+.form-field input:focus,
+.form-field select:focus,
+.form-field textarea:focus {
+  border-color: #f5c242;
+}
+.form-field textarea { resize: vertical; min-height: 70px; }
+
+.btn-save:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+  filter: grayscale(0.4);
+}
