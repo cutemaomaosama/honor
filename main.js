@@ -5,7 +5,7 @@ import {
   apiLogin, apiLogout, apiChangePassword,
   adminCreatePerson, adminUpdatePerson, adminDeletePerson,
   adminCreateHonor, adminUpdateHonor, adminDeleteHonor,
-  adminListAccounts, adminCreateAccount, adminResetPassword
+  adminListAccounts, adminCreateAccount, adminResetPassword, adminUpdateAccount
 } from './data.js';
 
 // ========= 状态 =========
@@ -785,9 +785,7 @@ async function doChangePwd() {
   try {
     await apiChangePassword(o, n);
     closeSimpleModal('pwdModal');
-    toast('密码已修改，请重新登录');
-    updateLoginUI();
-    setTimeout(openLoginModal, 300);
+    toast('密码已修改 ✨');
   } catch (e) {
     toast(e.message || '修改失败');
   } finally {
@@ -946,6 +944,7 @@ async function renderAdminAccounts() {
         <div class="col-span-3 truncate-cell text-white/70">${escapeHtml(a.dept)}</div>
         <div class="col-span-1 text-center"><span class="role-pill ${a.role}">${a.role === 'admin' ? '管理员' : '用户'}</span></div>
         <div class="col-span-3 text-right">
+          <button class="action-btn" data-act="editAcc"><i class="ri-edit-line"></i>编辑</button>
           <button class="action-btn" data-act="resetPwd"><i class="ri-lock-password-line"></i>重置密码</button>
         </div>
       </div>
@@ -954,7 +953,11 @@ async function renderAdminAccounts() {
       row.addEventListener('click', e => {
         const btn = e.target.closest('[data-act]');
         if (!btn) return;
-        if (btn.dataset.act === 'resetPwd') openResetPwdForm(row.dataset.user);
+        const username = row.dataset.user;
+        const acc = accs.find(x => x.username === username);
+        if (!acc) return;
+        if (btn.dataset.act === 'resetPwd') openResetPwdForm(username);
+        else if (btn.dataset.act === 'editAcc') openEditAccountForm(acc);
       });
     });
   } catch (e) {
@@ -997,30 +1000,40 @@ function textareaField(label, id, value = '', rows = 2) {
 // ---- 策划表单 ----
 function openPersonForm(person) {
   const isEdit = !!person;
-  const body = `
-    ${field('英文名 (唯一)', 'fEng', 'text', person?.engName || '', isEdit ? 'disabled' : '')}
+  // 编辑时保留所有字段可改；新增时只需英文名+中文名+部门
+  const body = isEdit ? `
+    ${field('英文名 (唯一)', 'fEng', 'text', person?.engName || '', 'disabled')}
     ${field('中文名', 'fName', 'text', person?.name || '')}
     ${field('部门', 'fDept', 'text', person?.dept || '')}
     ${field('职位', 'fRole', 'text', person?.role || '')}
     ${field('等级', 'fLevel', 'number', person?.level || 1, 'min="1" max="99"')}
     ${field('排序 (越小越靠前)', 'fSort', 'number', person?.sortOrder || 0)}
+  ` : `
+    ${field('英文名 (唯一)', 'fEng', 'text', '')}
+    ${field('中文名', 'fName', 'text', '')}
+    ${field('部门', 'fDept', 'text', '')}
   `;
   openFormModal(isEdit ? '编辑策划' : '新增策划', body, async () => {
-    const payload = {
-      engName: $('#fEng').value.trim(),
-      name: $('#fName').value.trim(),
-      dept: $('#fDept').value.trim(),
-      role: $('#fRole').value.trim(),
-      level: parseInt($('#fLevel').value || '1', 10) || 1,
-      sortOrder: parseInt($('#fSort').value || '0', 10) || 0,
-    };
-    if (!payload.engName || !payload.name) { toast('英文名和中文名必填'); return; }
     if (isEdit) {
-      await adminUpdatePerson(person.engName, {
-        name: payload.name, dept: payload.dept, role: payload.role,
-        level: payload.level, sortOrder: payload.sortOrder
-      });
+      const payload = {
+        name: $('#fName').value.trim(),
+        dept: $('#fDept').value.trim(),
+        role: $('#fRole').value.trim(),
+        level: parseInt($('#fLevel').value || '1', 10) || 1,
+        sortOrder: parseInt($('#fSort').value || '0', 10) || 0,
+      };
+      if (!payload.name) { toast('中文名必填'); return; }
+      await adminUpdatePerson(person.engName, payload);
     } else {
+      const payload = {
+        engName: $('#fEng').value.trim(),
+        name: $('#fName').value.trim(),
+        dept: $('#fDept').value.trim(),
+        role: '策划',
+        level: 1,
+        sortOrder: 0,
+      };
+      if (!payload.engName || !payload.name) { toast('英文名和中文名必填'); return; }
       await adminCreatePerson(payload);
     }
     closeSimpleModal('formModal');
@@ -1096,7 +1109,6 @@ function openAccountForm() {
     ${field('密码（至少 4 位）', 'aPwd', 'password', '')}
     ${field('中文名', 'aChn', 'text', '')}
     ${field('部门', 'aDept', 'text', '')}
-    ${field('职位', 'aPos', 'text', '')}
     ${selectField('角色', 'aRole', [
       { value: 'user', label: '普通用户' },
       { value: 'admin', label: '管理员' }
@@ -1108,7 +1120,7 @@ function openAccountForm() {
       password: $('#aPwd').value,
       chnName: $('#aChn').value.trim(),
       dept: $('#aDept').value.trim(),
-      positionName: $('#aPos').value.trim(),
+      positionName: '',
       role: $('#aRole').value
     };
     if (!payload.username || !payload.password) { toast('用户名和密码必填'); return; }
@@ -1116,6 +1128,29 @@ function openAccountForm() {
     await adminCreateAccount(payload);
     closeSimpleModal('formModal');
     toast('账号已创建');
+    renderAdminAccounts();
+  });
+}
+
+function openEditAccountForm(acc) {
+  const body = `
+    ${field('用户名', 'eUser', 'text', acc.username, 'disabled')}
+    ${field('中文名', 'eChn', 'text', acc.chnName || '')}
+    ${field('部门', 'eDept', 'text', acc.dept || '')}
+    ${selectField('角色', 'eRole', [
+      { value: 'user', label: '普通用户' },
+      { value: 'admin', label: '管理员' }
+    ], acc.role || 'user')}
+  `;
+  openFormModal('编辑账号', body, async () => {
+    const payload = {
+      chnName: $('#eChn').value.trim(),
+      dept: $('#eDept').value.trim(),
+      role: $('#eRole').value
+    };
+    await adminUpdateAccount(acc.username, payload);
+    closeSimpleModal('formModal');
+    toast('已更新');
     renderAdminAccounts();
   });
 }

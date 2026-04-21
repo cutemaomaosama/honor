@@ -793,3 +793,20 @@ header .nav-btn { text-decoration: none; display: inline-flex; align-items: cent
   cursor: not-allowed;
   filter: grayscale(0.4);
 }
+
+/* =========================
+   select 下拉框 option 样式修复
+   ========================= */
+select {
+  color: #fff;
+  background-color: #141a33;
+}
+select option {
+  color: #fff;
+  background-color: #141a33;
+}
+select option:checked,
+select option:hover {
+  background-color: #2a2e4d;
+  color: #f5c242;
+}

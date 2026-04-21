@@ -145,11 +145,7 @@ export async function apiChangePassword(oldPwd, newPwd) {
       throw e;
     }
   }
-  // 修改密码后后端会清理 session，要求重新登录
-  currentUser.token = '';
-  currentUser.isLoggedIn = false;
-  currentUser.personId = null;
-  setStoredToken('');
+  // 密码修改成功，保留当前登录状态（服务端只会清理其他 session）
 }
 
 async function apiFetchMe() {
@@ -415,4 +411,8 @@ export async function adminCreateAccount(payload) {
 
 export async function adminResetPassword(username, newPassword) {
   return apiJson('/api/admin/reset-password', { method: 'POST', body: { username, newPassword } });
+}
+
+export async function adminUpdateAccount(username, payload) {
+  return apiJson('/api/admin/account/' + encodeURIComponent(username), { method: 'POST', body: payload });
 }
