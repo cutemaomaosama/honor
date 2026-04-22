@@ -1,6 +1,6 @@
 import {
   QUALITY, CATEGORY, people, getPersonById,
-  currentUser, loadCurrentUser, isSelf, isAdmin, saveQuote,
+  currentUser, loadCurrentUser, isSelf, isAdmin, saveQuote, saveMiniBadges,
   loadAllPersons,
   apiLogin, apiLogout, apiChangePassword,
   adminCreatePerson, adminUpdatePerson, adminDeletePerson,
@@ -24,7 +24,9 @@ const state = {
   likedToday: new Set(),
   avatarBust: {},
   avatarPickedDataUrl: '',
-  adminAvatarStatus: 'pending'
+  adminAvatarStatus: 'pending',
+  // 佩戴徽章选择
+  badgePick: { personId: null, picked: [] }
 };
 
 const $ = (s) => document.querySelector(s);
@@ -45,6 +47,8 @@ async function init() {
   bindAdminEvents();
   bindMessageEvents();
   bindAvatarEvents();
+  bindBadgePickEvents();
+  bindEmojiEvents();
   handleRoute();
   window.addEventListener('hashchange', handleRoute);
 }
@@ -195,29 +199,86 @@ function renderTopThree() {
     const av = avatarUrl(item.engName) + (bust ? ('?t=' + bust) : '');
     const legend = item.honors.filter(h => h.quality === 'legend').length;
     const likes = state.likeCounts[item.engName] || 0;
+    const liked = state.likedToday.has(item.engName);
+    const canLike = currentUser.isLoggedIn && currentUser.username !== item.engName;
+    const likeTitle = !currentUser.isLoggedIn ? '登录后可点赞'
+      : (currentUser.username === item.engName ? '不能给自己点赞'
+      : (liked ? '今日已点赞，点击取消' : '点赞（每人每天一次）'));
+
+    // 佩戴徽章：优先使用 miniBadgeIds，否则自动取品质最高 5 枚
+    const order2 = { legend: 0, epic: 1, rare: 2, common: 3 };
+    let wornBadges = [];
+    if (Array.isArray(item.miniBadgeIds) && item.miniBadgeIds.length) {
+      wornBadges = item.miniBadgeIds
+        .map(id => item.honors.find(h => h.id === id))
+        .filter(Boolean);
+    } else {
+      wornBadges = item.honors.slice().sort((a, b) => {
+        if (order2[a.quality] !== order2[b.quality]) return order2[a.quality] - order2[b.quality];
+        return (b.date || '').localeCompare(a.date || '');
+      }).slice(0, 5);
+    }
+    const badgesHtml = wornBadges.length
+      ? `<div class="podium-badges">${wornBadges.map(h => `<div class="mini-badge-sm ${h.quality}" data-hid="${h.id}"><i class="${h.icon}"></i></div>`).join('')}</div>`
+      : '<div class="podium-badges"></div>';
+
     return `
-      <a href="#/person/${item.id}" class="podium ${cls} block hover:brightness-110 transition ${isSelf(item.id) ? 'is-self' : ''}">
-        <div class="podium-crown"><i class="${crown[i]}"></i></div>
-        <div class="podium-avatar">
-          <img src="${av}" class="podium-avatar-img" alt=""
-               onerror="this.style.display='none';this.nextElementSibling&&(this.nextElementSibling.style.display='flex');" />
-          <div class="podium-avatar-fallback" style="display:none;">
-            <i class="ri-user-smile-fill text-4xl text-wz-gold/80"></i>
+      <div class="podium ${cls} ${isSelf(item.id) ? 'is-self' : ''}" data-pid="${item.id}" data-eng="${escapeHtml(item.engName)}">
+        <a href="#/person/${item.id}" class="podium-inner hover:brightness-110 transition">
+          <div class="podium-crown"><i class="${crown[i]}"></i></div>
+          <div class="podium-avatar">
+            <img src="${av}" class="podium-avatar-img" alt=""
+                 onerror="this.style.display='none';this.nextElementSibling&&(this.nextElementSibling.style.display='flex');" />
+            <div class="podium-avatar-fallback" style="display:none;">
+              <i class="ri-user-smile-fill text-4xl text-wz-gold/80"></i>
+            </div>
           </div>
+          <div class="podium-rank">${rankNum[i]}</div>
+          <div class="font-bold text-base md:text-lg truncate text-wz-gold">${escapeHtml(item.name)}${isSelf(item.id) ? ' <span class=\"text-xs text-green-400\">(我)</span>' : ''}</div>
+          <div class="text-[11px] text-white/50 mb-1 truncate font-mono">${escapeHtml(item.engName)}</div>
+          <div class="podium-quote text-white/75 italic truncate px-2 mb-1" title="${escapeHtml(item.quote || '')}">${item.quote ? '"' + escapeHtml(item.quote) + '"' : ''}</div>
+        </a>
+        ${badgesHtml}
+        <a href="#/person/${item.id}" class="podium-inner block">
+          <div class="flex justify-center gap-2 text-xs flex-wrap">
+            <span class="flex items-center gap-1 text-wz-gold"><i class="ri-medal-fill"></i> ${item.honors.length}</span>
+            <span class="flex items-center gap-1 text-red-300"><i class="ri-vip-diamond-fill"></i> ${legend}</span>
+            <span class="flex items-center gap-1 text-orange-400"><i class="ri-fire-fill"></i> ${item.score}</span>
+          </div>
+        </a>
+        <div class="flex justify-center mt-2">
+          <button class="podium-like like-btn ${liked ? 'liked' : ''} ${canLike ? '' : 'disabled'}"
+                  data-like-eng="${escapeHtml(item.engName)}" title="${likeTitle}">
+            <i class="${liked ? 'ri-heart-fill' : 'ri-heart-line'}"></i>
+            <span class="like-count">${likes}</span>
+          </button>
         </div>
-        <div class="podium-rank">${rankNum[i]}</div>
-        <div class="font-bold text-base md:text-lg truncate text-wz-gold">${escapeHtml(item.name)}${isSelf(item.id) ? ' <span class=\"text-xs text-green-400\">(我)</span>' : ''}</div>
-        <div class="text-[11px] text-white/50 mb-2 truncate font-mono">${escapeHtml(item.engName)}</div>
-        <div class="text-[11px] text-white/60 italic truncate px-2 mb-2" title="${escapeHtml(item.quote || '')}">${item.quote ? '"' + escapeHtml(item.quote) + '"' : ''}</div>
-        <div class="flex justify-center gap-2 text-xs flex-wrap">
-          <span class="flex items-center gap-1 text-wz-gold"><i class="ri-medal-fill"></i> ${item.honors.length}</span>
-          <span class="flex items-center gap-1 text-red-300"><i class="ri-vip-diamond-fill"></i> ${legend}</span>
-          <span class="flex items-center gap-1 text-orange-400"><i class="ri-fire-fill"></i> ${item.score}</span>
-          <span class="flex items-center gap-1 text-pink-300"><i class="ri-heart-3-fill"></i> ${likes}</span>
-        </div>
-      </a>
+      </div>
     `;
   }).join('');
+
+  // 绑定 Top3 的徽章 tooltip 与点赞按钮
+  container.querySelectorAll('.podium').forEach(podium => {
+    const pid = Number(podium.dataset.pid);
+    const person = people.find(x => x.id === pid);
+    if (!person) return;
+    podium.querySelectorAll('.mini-badge-sm[data-hid]').forEach(el => {
+      const hid = Number(el.dataset.hid);
+      const honor = person.honors.find(h => h.id === hid);
+      if (!honor) return;
+      el.addEventListener('mouseenter', (e) => { e.stopPropagation(); showTooltip(e, honor); });
+      el.addEventListener('mousemove', (e) => { e.stopPropagation(); moveTooltip(e); });
+      el.addEventListener('mouseleave', hideTooltip);
+    });
+    const likeBtn = podium.querySelector('.podium-like');
+    if (likeBtn) {
+      likeBtn.addEventListener('click', async (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        await handleLikeClick(podium.dataset.eng);
+      });
+    }
+  });
 }
 
 // ========= 策划列表 =========
@@ -274,10 +335,7 @@ function renderPeopleList() {
 
 function personCardHTML(p) {
   const legend = p.honors.filter(h => h.quality === 'legend').length;
-  const topBadges = p.honors.slice().sort((a, b) => {
-    const order = { legend: 0, epic: 1, rare: 2, common: 3 };
-    return order[a.quality] - order[b.quality];
-  }).slice(0, 5);
+  const topBadges = getWornBadges(p);
   const selfTag = isSelf(p.id) ? '<span class="self-tag"><i class="ri-shield-check-fill"></i>本人</span>' : '';
   const likeCount = state.likeCounts[p.engName] || 0;
   const liked = state.likedToday.has(p.engName);
@@ -295,7 +353,7 @@ function personCardHTML(p) {
       <div class="relative pointer-events-none">
         <div class="flex items-center gap-3 mb-3">
           <div class="relative flex-shrink-0">
-            <div class="w-16 h-16 rounded-full p-[2px] bg-gradient-to-br from-wz-gold via-yellow-200 to-wz-red">
+            <div class="w-16 h-16 rounded-full p-[2px] card-avatar-ring">
               <div class="w-full h-full rounded-full bg-wz-dark2 overflow-hidden flex items-center justify-center">
                 <img src="${avUrl}" alt="" class="card-avatar-img w-full h-full object-cover"
                   onerror="this.style.display='none';this.nextElementSibling&&(this.nextElementSibling.style.display='flex');" />
@@ -318,8 +376,7 @@ function personCardHTML(p) {
           ${topBadges.map(h => `
             <div class="mini-badge-sm ${h.quality}" data-hid="${h.id}"><i class="${h.icon}"></i></div>
           `).join('')}
-          ${p.honors.length > 5 ? `<div class="mini-badge-sm more">+${p.honors.length - 5}</div>` : ''}
-          ${p.honors.length === 0 ? '<div class="text-xs text-white/30">暂无荣誉</div>' : ''}
+          ${topBadges.length === 0 ? '<div class="text-xs text-white/30">暂无荣誉</div>' : ''}
         </div>
         <div class="grid grid-cols-4 gap-2 pt-3 border-t border-wz-gold/15">
           <div class="text-center"><div class="text-sm font-bold text-wz-gold">${p.honors.length}</div><div class="text-[10px] text-white/50">荣誉</div></div>
@@ -373,15 +430,11 @@ async function handleLikeClick(engName) {
     state.likeCounts[engName] = res.total;
     if (res.liked) state.likedToday.add(engName);
     else state.likedToday.delete(engName);
-    // 刷新所有同 engName 的点赞按钮（列表小按钮 + 个人页大按钮）
+    // 刷新所有同 engName 的点赞按钮（列表小按钮 + 个人页大按钮 + Top3小按钮）
     syncLikeButtons(engName, res.liked, res.total);
-    // 如果当前在个人页展示的就是这个人，同步大按钮和 stats
+    // 如果当前在个人页展示的就是这个人，同步 stats
     if (state.currentPerson && state.currentPerson.engName === engName) {
       $('#statLikes').textContent = res.total;
-    }
-    // Top3 中可能包含此人，刷新一下 top3 计数显示
-    if (!$('#viewPeople').classList.contains('hidden')) {
-      renderTopThree();
     }
     toast(res.liked ? '点赞成功 ❤' : '已取消点赞');
   } catch (e) {
@@ -409,6 +462,22 @@ function syncLikeButtons(engName, liked, total) {
 
 function cssEscape(s) {
   return String(s).replace(/["\\]/g, '\\$&');
+}
+
+// 根据 miniBadgeIds 获取佩戴徽章；若未佩戴则返回品质最高的前5枚
+function getWornBadges(p) {
+  if (!p || !Array.isArray(p.honors)) return [];
+  const order = { legend: 0, epic: 1, rare: 2, common: 3 };
+  if (Array.isArray(p.miniBadgeIds) && p.miniBadgeIds.length) {
+    const picked = p.miniBadgeIds
+      .map(id => p.honors.find(h => h.id === id))
+      .filter(Boolean);
+    if (picked.length) return picked.slice(0, 5);
+  }
+  return p.honors.slice().sort((a, b) => {
+    if (order[a.quality] !== order[b.quality]) return order[a.quality] - order[b.quality];
+    return (b.date || '').localeCompare(a.date || '');
+  }).slice(0, 5);
 }
 
 function bindPeopleEvents() {
@@ -493,11 +562,29 @@ function renderMiniBadges() {
   const p = state.currentPerson;
   const container = $('#miniBadges');
   const empty = $('#miniBadgesEmpty');
+  const hint = $('#miniBadgesHint');
+  const editBtn = $('#editBadgesBtn');
+
+  const self = isSelf(p.id);
+  // 佩戴按钮：仅本人且有荣誉时显示
+  if (editBtn) editBtn.classList.toggle('hidden', !(self && p.honors.length > 0));
+
   const order = { legend: 0, epic: 1, rare: 2, common: 3 };
-  const badges = p.honors.slice().sort((a, b) => {
-    if (order[a.quality] !== order[b.quality]) return order[a.quality] - order[b.quality];
-    return (b.date || '').localeCompare(a.date || '');
-  }).slice(0, 5);
+  // 优先使用佩戴列表
+  let badges = [];
+  let isCustom = false;
+  if (Array.isArray(p.miniBadgeIds) && p.miniBadgeIds.length) {
+    badges = p.miniBadgeIds.map(id => p.honors.find(h => h.id === id)).filter(Boolean);
+    isCustom = true;
+  }
+  if (!badges.length) {
+    badges = p.honors.slice().sort((a, b) => {
+      if (order[a.quality] !== order[b.quality]) return order[a.quality] - order[b.quality];
+      return (b.date || '').localeCompare(a.date || '');
+    }).slice(0, 5);
+  }
+  if (hint) hint.textContent = isCustom ? `已佩戴 ${badges.length} 枚徽章 · 悬停查看详情` : '自动展示品质最高的 5 枚 · 悬停查看详情';
+
   if (badges.length === 0) {
     container.innerHTML = '';
     empty.classList.remove('hidden');
@@ -1539,6 +1626,177 @@ async function doSubmitAvatar() {
   } finally {
     btn.disabled = false;
   }
+}
+
+// ========= 佩戴徽章 =========
+function bindBadgePickEvents() {
+  const btn = $('#editBadgesBtn');
+  if (btn) btn.addEventListener('click', openBadgeModal);
+  const submit = $('#doBadgeSubmit');
+  if (submit) submit.addEventListener('click', doSaveBadges);
+  const m = $('#badgeModal');
+  if (m) m.addEventListener('click', (e) => {
+    if (e.target === m) closeSimpleModal('badgeModal');
+  });
+}
+
+let _badgePicked = new Set();
+
+function openBadgeModal() {
+  const p = state.currentPerson;
+  if (!p || !isSelf(p.id)) return;
+  if (!p.honors.length) { toast('暂无可佩戴的徽章'); return; }
+  _badgePicked = new Set(Array.isArray(p.miniBadgeIds) ? p.miniBadgeIds : []);
+  if (_badgePicked.size === 0) {
+    getWornBadges(p).forEach(h => _badgePicked.add(h.id));
+  }
+  renderBadgePickList();
+  openSimpleModal('badgeModal');
+}
+
+function renderBadgePickList() {
+  const p = state.currentPerson;
+  if (!p) return;
+  const order = { legend: 0, epic: 1, rare: 2, common: 3 };
+  const sorted = p.honors.slice().sort((a, b) => {
+    if (order[a.quality] !== order[b.quality]) return order[a.quality] - order[b.quality];
+    return (b.date || '').localeCompare(a.date || '');
+  });
+  const list = $('#badgePickList');
+  list.innerHTML = sorted.map(h => {
+    const picked = _badgePicked.has(h.id);
+    const q = QUALITY[h.quality] || QUALITY.common;
+    return `
+      <div class="badge-pick ${h.quality} ${picked ? 'picked' : ''}" data-hid="${h.id}">
+        <div class="pick-icon"><i class="${h.icon}"></i></div>
+        <div class="pick-info">
+          <div class="pick-name" title="${escapeHtml(h.name)}">${escapeHtml(h.name)}</div>
+          <div class="pick-q">${q.name} · ${CATEGORY[h.category] || h.category}</div>
+        </div>
+        <div class="check-icon"><i class="ri-check-line"></i></div>
+      </div>
+    `;
+  }).join('');
+  list.querySelectorAll('.badge-pick').forEach(el => {
+    el.addEventListener('click', () => {
+      const id = Number(el.dataset.hid);
+      if (_badgePicked.has(id)) {
+        _badgePicked.delete(id);
+        el.classList.remove('picked');
+      } else {
+        if (_badgePicked.size >= 5) { toast('最多佩戴 5 枚徽章'); return; }
+        _badgePicked.add(id);
+        el.classList.add('picked');
+      }
+      $('#badgePickedCount').textContent = _badgePicked.size;
+    });
+  });
+  $('#badgePickedCount').textContent = _badgePicked.size;
+}
+
+async function doSaveBadges() {
+  const p = state.currentPerson;
+  if (!p || !isSelf(p.id)) return;
+  const ids = Array.from(_badgePicked);
+  const btn = $('#doBadgeSubmit');
+  btn.disabled = true;
+  try {
+    await saveMiniBadges(p, ids);
+    toast('佩戴的徽章已更新 ✨');
+    closeSimpleModal('badgeModal');
+    renderMiniBadges();
+    await loadAllPersons();
+    const latest = getPersonById(p.id);
+    if (latest) {
+      state.currentPerson = latest;
+      renderMiniBadges();
+    }
+  } catch (e) {
+    toast(e.message || '保存失败');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+// ========= Emoji 选择器 =========
+const EMOJI_LIST = [
+  '😀','😁','😂','🤣','😃','😄','😅','😆','😉','😊',
+  '😋','😎','😍','😘','🥰','😗','😙','😚','🙂','🤗',
+  '🤩','🤔','🤨','😐','😑','😶','🙄','😏','😣','😥',
+  '😮','🤐','😯','😪','😫','🥱','😴','😌','😛','😜',
+  '🤤','😒','😓','😔','😕','🙃','🤑','😲','☹️','🙁',
+  '😖','😞','😟','😤','😢','😭','😦','😧','😨','😩',
+  '🤯','😬','😰','😱','🥵','🥶','😳','🤪','😵','🥴',
+  '😠','😡','🤬','😷','🤒','🤕','🤢','🤮','🤧','🥳',
+  '🥺','🤠','🤡','🤥','🤫','🤭','🧐','🤓','😇','🤝',
+  '👍','👎','👏','🙌','🙏','💪','✨','🔥','❤️','💛',
+  '💚','💙','💜','🖤','🤍','💖','💕','💓','💗','💞',
+  '🌹','🌸','🌺','🌼','🌻','🎉','🎊','🎁','🏆','🥇',
+  '🥈','🥉','🎯','🎮','🕹️','🎲','🎨','📚','💻','⚔️',
+  '🛡️','👑','💎','⭐','🌟','💫','⚡','☀️','🌙','🌈'
+];
+
+function bindEmojiEvents() {
+  const btn = $('#emojiBtn');
+  const panel = $('#emojiPanel');
+  if (!btn || !panel) return;
+  panel.innerHTML = EMOJI_LIST.map(e => `<button type="button" class="emoji-item" data-e="${e}">${e}</button>`).join('');
+  btn.addEventListener('click', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    togglePanel();
+  });
+  panel.addEventListener('click', (e) => {
+    const item = e.target.closest('.emoji-item');
+    if (!item) return;
+    e.stopPropagation();
+    insertEmoji(item.dataset.e);
+  });
+  document.addEventListener('click', (e) => {
+    if (panel.style.display === 'block') {
+      if (!panel.contains(e.target) && e.target !== btn) {
+        panel.style.display = 'none';
+      }
+    }
+  });
+  window.addEventListener('resize', () => { panel.style.display = 'none'; });
+  window.addEventListener('scroll', () => { panel.style.display = 'none'; }, true);
+
+  function togglePanel() {
+    if (panel.style.display === 'block') {
+      panel.style.display = 'none';
+      return;
+    }
+    const rect = btn.getBoundingClientRect();
+    panel.style.display = 'block';
+    const pw = panel.offsetWidth || 280;
+    let left = rect.right - pw;
+    if (left < 8) left = 8;
+    if (left + pw > window.innerWidth - 8) left = window.innerWidth - pw - 8;
+    let top = rect.bottom + 6;
+    const ph = panel.offsetHeight || 220;
+    if (top + ph > window.innerHeight - 8) {
+      top = rect.top - ph - 6;
+    }
+    panel.style.left = left + 'px';
+    panel.style.top = top + 'px';
+  }
+}
+
+function insertEmoji(ch) {
+  const input = $('#msgInput');
+  if (!input) return;
+  const start = input.selectionStart ?? input.value.length;
+  const end = input.selectionEnd ?? input.value.length;
+  const before = input.value.slice(0, start);
+  const after = input.value.slice(end);
+  const combined = (before + ch + after).slice(0, 500);
+  input.value = combined;
+  const pos = Math.min(start + ch.length, 500);
+  input.focus();
+  try { input.setSelectionRange(pos, pos); } catch {}
+  const lenEl = $('#msgLen');
+  if (lenEl) lenEl.textContent = input.value.length;
 }
 
 document.addEventListener('DOMContentLoaded', init);

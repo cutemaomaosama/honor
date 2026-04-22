@@ -258,9 +258,14 @@
         </div>
 
         <div class="relative border-t border-wz-gold/20 bg-black/30 px-6 py-4">
-          <div class="flex items-center justify-between mb-2">
+          <div class="flex items-center justify-between mb-2 gap-3 flex-wrap">
             <h3 class="text-sm text-wz-gold flex items-center gap-2"><i class="ri-shield-star-line"></i>精选徽章</h3>
-            <span class="text-xs text-white/40">自动展示品质最高的 5 枚 · 悬停查看详情</span>
+            <div class="flex items-center gap-3">
+              <span class="text-xs text-white/40" id="miniBadgesHint">自动展示品质最高的 5 枚 · 悬停查看详情</span>
+              <button id="editBadgesBtn" class="edit-badges-btn hidden" title="选择佩戴的徽章">
+                <i class="ri-shield-star-line"></i>佩戴徽章
+              </button>
+            </div>
           </div>
           <div id="miniBadges" class="flex flex-wrap gap-3"></div>
           <div id="miniBadgesEmpty" class="hidden text-white/40 text-xs py-2">
@@ -334,9 +339,12 @@
               <i class="ri-information-line"></i> 请先登录后再发表留言
             </div>
             <div id="msgInputWrap" class="hidden">
-              <textarea id="msgInput" rows="2" maxlength="500"
-                class="w-full px-3 py-2 rounded-lg bg-white/5 border border-wz-gold/20 focus:border-wz-gold text-sm outline-none resize-none"
-                placeholder="写下你的祝福、感谢或建议...（最多 500 字，Ctrl/⌘ + Enter 发送）"></textarea>
+              <div class="relative">
+                <textarea id="msgInput" rows="2" maxlength="500"
+                  class="w-full px-3 py-2 pr-12 rounded-lg bg-white/5 border border-wz-gold/20 focus:border-wz-gold text-sm outline-none resize-none"
+                  placeholder="写下你的祝福、感谢或建议...（支持 emoji 😊，最多 500 字，Ctrl/⌘ + Enter 发送）"></textarea>
+                <button id="emojiBtn" type="button" class="emoji-btn absolute right-2 top-2" title="插入 emoji">😊</button>
+              </div>
               <div class="flex justify-between items-center mt-2">
                 <span class="text-[11px] text-white/40"><span id="msgLen">0</span> / 500</span>
                 <button id="msgSubmitBtn" class="btn-save px-4 py-1.5 text-sm">
@@ -571,6 +579,27 @@
       </div>
     </div>
   </div>
+
+  <!-- 佩戴徽章选择弹窗 -->
+  <div id="badgeModal" class="fixed inset-0 bg-black/70 z-[80] hidden items-center justify-center p-4 backdrop-blur-sm">
+    <div class="relative bg-gradient-to-br from-wz-dark2 to-wz-dark rounded-2xl border-2 border-wz-gold/50 max-w-2xl w-full p-6 shadow-2xl max-h-[90vh] flex flex-col">
+      <button data-close="badgeModal" class="absolute top-3 right-3 w-8 h-8 rounded-full hover:bg-white/10 flex items-center justify-center transition">
+        <i class="ri-close-line text-xl"></i>
+      </button>
+      <h3 class="text-xl font-bold text-wz-gold mb-2 flex items-center gap-2">
+        <i class="ri-shield-star-fill"></i>佩戴荣誉徽章
+      </h3>
+      <p class="text-xs text-white/50 mb-4">最多可佩戴 <span class="text-wz-gold">5 枚</span>，佩戴的徽章会显示在你的个人页与全员荣誉卡片上。已选 <span id="badgePickedCount" class="text-wz-gold">0</span>/5</p>
+      <div id="badgePickList" class="badge-pick-grid"></div>
+      <div class="flex gap-2 pt-4 mt-2 border-t border-white/10">
+        <button data-close="badgeModal" class="btn-cancel flex-1 py-2">取消</button>
+        <button id="doBadgeSubmit" class="btn-save flex-1 py-2"><i class="ri-check-line mr-1"></i>保存佩戴</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Emoji 面板（悬浮在留言板输入框下方） -->
+  <div id="emojiPanel" class="emoji-panel" style="display:none;"></div>
 
   <!-- 页脚 -->
   <footer class="mt-16 border-t border-wz-gold/20 py-6 text-center text-white/50 text-xs">
