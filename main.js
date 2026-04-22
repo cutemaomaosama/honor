@@ -9,7 +9,10 @@ import {
   avatarUrl, uploadMyAvatar, fetchMyAvatarRequest,
   adminListAvatarRequests, adminReviewAvatar,
   fetchLikesSummary, togglePersonLike,
-  fetchMessages, postMessage, deleteMessage
+  fetchMessages, postMessage, deleteMessage,
+  fetchHonorTemplates, adminCreateHonorTemplate, adminUpdateHonorTemplate,
+  adminDeleteHonorTemplate, adminBatchGrantHonor,
+  fetchIconLibrary, adminUploadIcon, adminDeleteIcon
 } from './data.js';
 
 // ========= 状态 =========
@@ -26,7 +29,13 @@ const state = {
   avatarPickedDataUrl: '',
   adminAvatarStatus: 'pending',
   // 佩戴徽章选择
-  badgePick: { personId: null, picked: [] }
+  badgePick: { personId: null, picked: [] },
+  // 模板 & 图标库
+  honorTemplates: [],
+  iconLibrary: [],
+  iconPickerTarget: null, // 接收回写的 { setIcon: fn }
+  // 批量发放
+  batchGrant: { picked: new Set(), search: '' }
 };
 
 const $ = (s) => document.querySelector(s);
@@ -49,6 +58,9 @@ async function init() {
   bindAvatarEvents();
   bindBadgePickEvents();
   bindEmojiEvents();
+  bindTemplateEvents();
+  bindBatchGrantEvents();
+  bindIconPickerEvents();
   handleRoute();
   window.addEventListener('hashchange', handleRoute);
 }
@@ -219,7 +231,7 @@ function renderTopThree() {
       }).slice(0, 5);
     }
     const badgesHtml = wornBadges.length
-      ? `<div class="podium-badges">${wornBadges.map(h => `<div class="mini-badge-sm ${h.quality}" data-hid="${h.id}"><i class="${h.icon}"></i></div>`).join('')}</div>`
+      ? `<div class="podium-badges">${wornBadges.map(h => `<div class="mini-badge-sm ${h.quality}" data-hid="${h.id}">${iconHTML(h.icon)}</div>`).join('')}</div>`
       : '<div class="podium-badges"></div>';
 
     return `
@@ -374,7 +386,7 @@ function personCardHTML(p) {
         <div class="quote-strip text-[12px] text-white/70 mb-3 italic truncate px-1" title="${escapeHtml(p.quote || '')}">${quote}</div>
         <div class="flex gap-1.5 mb-3 min-h-[32px]">
           ${topBadges.map(h => `
-            <div class="mini-badge-sm ${h.quality}" data-hid="${h.id}"><i class="${h.icon}"></i></div>
+            <div class="mini-badge-sm ${h.quality}" data-hid="${h.id}">${iconHTML(h.icon)}</div>
           `).join('')}
           ${topBadges.length === 0 ? '<div class="text-xs text-white/30">暂无荣誉</div>' : ''}
         </div>
@@ -462,6 +474,20 @@ function syncLikeButtons(engName, liked, total) {
 
 function cssEscape(s) {
   return String(s).replace(/["\\]/g, '\\$&');
+}
+
+// 渲染图标（支持 data URL 图片 / http URL / remixicon 类名）
+function iconHTML(icon, extraClass = '') {
+  const v = String(icon || '').trim();
+  if (!v) return `<i class="ri-medal-fill ${extraClass}"></i>`;
+  if (v.startsWith('data:image/') || /^https?:\/\//.test(v)) {
+    return `<img src="${escapeAttr(v)}" class="icon-img ${extraClass}" alt="" />`;
+  }
+  return `<i class="${escapeAttr(v)} ${extraClass}"></i>`;
+}
+
+function escapeAttr(s) {
+  return String(s == null ? '' : s).replace(/["<>&]/g, c => ({ '"': '&quot;', '<': '&lt;', '>': '&gt;', '&': '&amp;' }[c]));
 }
 
 // 根据 miniBadgeIds 获取佩戴徽章；若未佩戴则返回品质最高的前5枚
@@ -594,7 +620,7 @@ function renderMiniBadges() {
   empty.classList.add('hidden');
   container.innerHTML = badges.map(h => `
     <div class="mini-badge ${h.quality}" data-id="${h.id}" tabindex="0">
-      <i class="${h.icon}"></i>
+      ${iconHTML(h.icon)}
     </div>
   `).join('');
   container.querySelectorAll('.mini-badge').forEach(el => {
@@ -613,7 +639,7 @@ function showTooltip(e, honor) {
     <div class="flex items-start gap-2 mb-2">
       <div class="w-8 h-8 rounded-full flex items-center justify-center text-white flex-shrink-0"
            style="background: ${q.color}; box-shadow: 0 0 8px ${q.color}88;">
-        <i class="${honor.icon}"></i>
+        ${iconHTML(honor.icon)}
       </div>
       <div class="flex-1">
         <div class="font-bold text-wz-gold">${escapeHtml(honor.name)}</div>
@@ -691,7 +717,7 @@ function renderHonors() {
     return `
       <div class="honor-card ${h.quality}" data-id="${h.id}">
         <span class="quality-tag">${q.name}</span>
-        <div class="honor-icon"><i class="${h.icon}"></i></div>
+        <div class="honor-icon">${iconHTML(h.icon)}</div>
         <div class="font-semibold text-sm md:text-base mb-1 line-clamp-2">${escapeHtml(h.name)}</div>
         <div class="text-xs text-white/60 mb-1">${CATEGORY[h.category] || h.category}</div>
         <div class="text-[11px] text-white/40 mt-auto pt-2 flex items-center gap-1">
@@ -719,7 +745,7 @@ function openModal(honor) {
                   background: radial-gradient(circle, ${q.color}, ${q.border}88);
                   border-radius: 50%; display: flex; align-items: center; justify-content: center;
                   box-shadow: 0 0 30px ${q.color}99; color: #fff; margin-bottom: 1rem;">
-        <i class="${honor.icon}"></i>
+        ${iconHTML(honor.icon)}
       </div>
       <div class="inline-block px-3 py-0.5 rounded-full text-xs mb-2 font-semibold"
            style="background: ${q.color}; color: #0b1020;">
@@ -843,12 +869,15 @@ function bindGlobalEvents() {
       closeSimpleModal('pwdModal');
       closeSimpleModal('formModal');
       closeSimpleModal('avatarModal');
+      closeSimpleModal('badgeModal');
+      closeSimpleModal('batchGrantModal');
+      closeSimpleModal('iconPickerModal');
     }
   });
   document.querySelectorAll('[data-close]').forEach(btn => {
     btn.addEventListener('click', () => closeSimpleModal(btn.dataset.close));
   });
-  ['loginModal', 'pwdModal', 'formModal', 'avatarModal'].forEach(id => {
+  ['loginModal', 'pwdModal', 'formModal', 'avatarModal', 'badgeModal', 'batchGrantModal', 'iconPickerModal'].forEach(id => {
     const m = document.getElementById(id);
     if (m) m.addEventListener('click', e => { if (e.target === m) closeSimpleModal(id); });
   });
@@ -1007,6 +1036,10 @@ function renderAdmin() {
     $('#adminHonorPanel').classList.remove('hidden');
     populateAdminHonorPersonSelect();
     renderAdminHonors();
+  } else if (state.adminTab === 'template') {
+    $('#adminTemplatePanel').classList.remove('hidden');
+    renderAdminTemplates();
+    renderAdminIconLibrary();
   } else if (state.adminTab === 'account') {
     $('#adminAccountPanel').classList.remove('hidden');
     renderAdminAccounts();
@@ -1171,7 +1204,7 @@ function renderAdminHonors() {
       <div class="col-span-1 text-center"><span class="quality-pill ${h.quality}">${(QUALITY[h.quality] || QUALITY.common).name}</span></div>
       <div class="col-span-2 text-center text-white/70">${CATEGORY[h.category] || h.category}</div>
       <div class="col-span-2 text-center text-white/70">${escapeHtml(h.date)}</div>
-      <div class="col-span-2 truncate-cell text-white/50 text-xs"><i class="${h.icon}"></i> ${escapeHtml(h.icon)}</div>
+      <div class="col-span-2 truncate-cell text-white/50 text-xs flex items-center gap-1">${iconHTML(h.icon, 'admin-icon')} <span class="truncate">${escapeHtml((h.icon || '').startsWith('data:') ? '自定义图片' : h.icon)}</span></div>
       <div class="col-span-2 text-right">
         <button class="action-btn" data-act="editH"><i class="ri-edit-line"></i>编辑</button>
         <button class="action-btn danger" data-act="delH"><i class="ri-delete-bin-line"></i>删除</button>
@@ -1311,12 +1344,20 @@ function openHonorForm(honor) {
   const qualityOpts = Object.keys(QUALITY).map(k => ({ value: k, label: QUALITY[k].name }));
   const catOpts = Object.keys(CATEGORY).map(k => ({ value: k, label: CATEGORY[k] }));
   const reasonField = isEdit ? textareaField('获得理由', 'fHReason', honor?.reason || '', 2) : '';
+  const currentIcon = honor?.icon || 'ri-medal-fill';
   const body = `
     <div class="text-xs text-white/50 mb-1">所属策划：<span class="text-wz-gold">${escapeHtml(person ? person.name : '')}</span> (${escapeHtml(personEng)})</div>
     ${field('荣誉名称', 'fHName', 'text', honor?.name || '')}
     ${selectField('品质', 'fHQuality', qualityOpts, honor?.quality || 'common')}
     ${selectField('分类', 'fHCategory', catOpts, honor?.category || 'achievement')}
-    ${field('图标 (RemixIcon class)', 'fHIcon', 'text', honor?.icon || 'ri-medal-fill')}
+    <div class="form-field">
+      <label>图标</label>
+      <div class="flex items-center gap-2">
+        <div id="fHIconPreview" class="icon-preview">${iconHTML(currentIcon)}</div>
+        <input id="fHIcon" type="text" class="flex-1 font-mono" value="${escapeAttr(currentIcon)}" placeholder="remixicon 类名，或点击右侧从图标库选择" />
+        <button type="button" id="fHIconPickBtn" class="btn-save px-3 py-2 text-sm"><i class="ri-image-add-line mr-1"></i>图标库</button>
+      </div>
+    </div>
     ${field('获取日期', 'fHDate', 'date', honor?.date || '')}
     ${textareaField('荣誉描述', 'fHDesc', honor?.desc || '', 2)}
     ${reasonField}
@@ -1343,6 +1384,18 @@ function openHonorForm(honor) {
     toast('保存成功');
     await loadAllPersons();
     renderAdmin();
+  });
+  // 绑定：输入框变化实时更新预览；点击按钮打开图标选择器
+  const iconInput = $('#fHIcon');
+  const iconPreview = $('#fHIconPreview');
+  const syncPreview = () => { if (iconPreview) iconPreview.innerHTML = iconHTML(iconInput.value.trim() || 'ri-medal-fill'); };
+  if (iconInput) iconInput.addEventListener('input', syncPreview);
+  const pickBtn = $('#fHIconPickBtn');
+  if (pickBtn) pickBtn.addEventListener('click', () => {
+    openIconPicker((val) => {
+      iconInput.value = val;
+      syncPreview();
+    });
   });
 }
 
@@ -1668,7 +1721,7 @@ function renderBadgePickList() {
     const q = QUALITY[h.quality] || QUALITY.common;
     return `
       <div class="badge-pick ${h.quality} ${picked ? 'picked' : ''}" data-hid="${h.id}">
-        <div class="pick-icon"><i class="${h.icon}"></i></div>
+        <div class="pick-icon">${iconHTML(h.icon)}</div>
         <div class="pick-info">
           <div class="pick-name" title="${escapeHtml(h.name)}">${escapeHtml(h.name)}</div>
           <div class="pick-q">${q.name} · ${CATEGORY[h.category] || h.category}</div>
@@ -1797,6 +1850,432 @@ function insertEmoji(ch) {
   try { input.setSelectionRange(pos, pos); } catch {}
   const lenEl = $('#msgLen');
   if (lenEl) lenEl.textContent = input.value.length;
+}
+
+/* =========================================================
+   荣誉模板 & 图标库 & 批量发放 & 图标选择器
+   ========================================================= */
+
+// ---------- 荣誉模板 ----------
+function bindTemplateEvents() {
+  const addBtn = $('#addTemplateBtn');
+  if (addBtn) addBtn.addEventListener('click', () => openTemplateForm(null));
+  // 图标上传
+  const uploadBtn = $('#uploadIconBtn');
+  const uploadInput = $('#iconUploadFile');
+  if (uploadBtn && uploadInput) {
+    uploadBtn.addEventListener('click', () => uploadInput.click());
+    uploadInput.addEventListener('change', async (e) => {
+      const files = Array.from(e.target.files || []);
+      if (!files.length) return;
+      for (const f of files) {
+        if (f.size > 500 * 1024) { toast(`图标 ${f.name} 超过 500KB，已跳过`); continue; }
+        if (!/^image\/(png|jpe?g|webp|gif|svg\+xml)$/.test(f.type)) {
+          toast(`不支持的格式：${f.name}`); continue;
+        }
+        try {
+          const dataUrl = await readFileAsDataUrl(f);
+          await adminUploadIcon(dataUrl, f.name.replace(/\.[^.]+$/, ''));
+        } catch (err) {
+          toast(err.message || '上传失败');
+        }
+      }
+      uploadInput.value = '';
+      toast('图标上传完成 ✨');
+      await renderAdminIconLibrary();
+    });
+  }
+}
+
+function readFileAsDataUrl(file) {
+  return new Promise((resolve, reject) => {
+    const r = new FileReader();
+    r.onload = () => resolve(r.result || '');
+    r.onerror = () => reject(new Error('读取文件失败'));
+    r.readAsDataURL(file);
+  });
+}
+
+async function loadTemplatesIfNeeded(force = false) {
+  if (!force && state.honorTemplates.length) return state.honorTemplates;
+  try {
+    const list = await fetchHonorTemplates();
+    state.honorTemplates = Array.isArray(list) ? list : [];
+  } catch (_) {
+    state.honorTemplates = [];
+  }
+  return state.honorTemplates;
+}
+
+async function loadIconLibraryIfNeeded(force = false) {
+  if (!force && state.iconLibrary.length) return state.iconLibrary;
+  try {
+    const list = await fetchIconLibrary();
+    state.iconLibrary = Array.isArray(list) ? list : [];
+  } catch (_) {
+    state.iconLibrary = [];
+  }
+  return state.iconLibrary;
+}
+
+async function renderAdminTemplates() {
+  const list = $('#adminTemplateList');
+  if (!list) return;
+  list.innerHTML = '<div class="p-4 text-center text-white/50 text-sm">加载中...</div>';
+  const tpls = await loadTemplatesIfNeeded(true);
+  if (!tpls.length) {
+    list.innerHTML = '<div class="p-4 text-center text-white/50 text-sm">暂无模板，点击"新建模板"添加</div>';
+    return;
+  }
+  list.innerHTML = tpls.map(t => `
+    <div class="template-row" data-id="${t.id}">
+      <div class="col-icon"><div class="icon-preview ${t.quality}">${iconHTML(t.icon)}</div></div>
+      <div class="col-name truncate" title="${escapeAttr(t.name)}">${escapeHtml(t.name)}</div>
+      <div class="col-quality"><span class="quality-pill ${t.quality}">${(QUALITY[t.quality] || QUALITY.common).name}</span></div>
+      <div class="col-category">${CATEGORY[t.category] || t.category}</div>
+      <div class="col-actions">
+        <button class="mini-btn primary" data-act="grant" title="用该模板批量发放"><i class="ri-send-plane-2-line"></i>发放</button>
+        <button class="mini-btn" data-act="edit" title="编辑"><i class="ri-edit-line"></i></button>
+        <button class="mini-btn danger" data-act="del" title="删除"><i class="ri-delete-bin-line"></i></button>
+      </div>
+    </div>
+  `).join('');
+  list.querySelectorAll('.template-row').forEach(row => {
+    const id = Number(row.dataset.id);
+    const tpl = tpls.find(x => x.id === id);
+    if (!tpl) return;
+    row.querySelectorAll('[data-act]').forEach(btn => {
+      btn.addEventListener('click', async () => {
+        const act = btn.dataset.act;
+        if (act === 'edit') openTemplateForm(tpl);
+        else if (act === 'del') {
+          if (!confirm(`确定删除模板 "${tpl.name}" 吗？`)) return;
+          try {
+            await adminDeleteHonorTemplate(tpl.id);
+            toast('已删除');
+            await renderAdminTemplates();
+          } catch (e) { toast(e.message || '删除失败'); }
+        } else if (act === 'grant') {
+          openBatchGrantModal(tpl);
+        }
+      });
+    });
+  });
+}
+
+function openTemplateForm(tpl) {
+  const isEdit = !!tpl;
+  const qualityOpts = Object.keys(QUALITY).map(k => ({ value: k, label: QUALITY[k].name }));
+  const catOpts = Object.keys(CATEGORY).map(k => ({ value: k, label: CATEGORY[k] }));
+  const currentIcon = tpl?.icon || 'ri-medal-fill';
+  const body = `
+    ${field('模板名称 *', 'tName', 'text', tpl?.name || '')}
+    ${selectField('品质', 'tQuality', qualityOpts, tpl?.quality || 'common')}
+    ${selectField('分类', 'tCategory', catOpts, tpl?.category || 'achievement')}
+    <div class="form-field">
+      <label>图标</label>
+      <div class="flex items-center gap-2">
+        <div id="tIconPreview" class="icon-preview">${iconHTML(currentIcon)}</div>
+        <input id="tIcon" type="text" class="flex-1 font-mono" value="${escapeAttr(currentIcon)}" placeholder="remixicon 类名，或点击右侧从图标库选择" />
+        <button type="button" id="tIconPickBtn" class="btn-save px-3 py-2 text-sm"><i class="ri-image-add-line mr-1"></i>图标库</button>
+      </div>
+    </div>
+    ${textareaField('默认描述', 'tDesc', tpl?.description || '', 2)}
+    ${textareaField('默认颁奖理由', 'tReason', tpl?.reason || '', 2)}
+  `;
+  openFormModal(isEdit ? '编辑荣誉模板' : '新建荣誉模板', body, async () => {
+    const payload = {
+      name: $('#tName').value.trim(),
+      quality: $('#tQuality').value,
+      category: $('#tCategory').value,
+      icon: $('#tIcon').value.trim() || 'ri-medal-fill',
+      description: $('#tDesc').value.trim(),
+      reason: $('#tReason').value.trim()
+    };
+    if (!payload.name) { toast('模板名称必填'); return; }
+    if (isEdit) {
+      await adminUpdateHonorTemplate(tpl.id, payload);
+    } else {
+      await adminCreateHonorTemplate(payload);
+    }
+    closeSimpleModal('formModal');
+    toast('已保存');
+    await renderAdminTemplates();
+  });
+  // 图标预览 & 图标库
+  const iconInput = $('#tIcon');
+  const iconPreview = $('#tIconPreview');
+  const syncPreview = () => { if (iconPreview) iconPreview.innerHTML = iconHTML(iconInput.value.trim() || 'ri-medal-fill'); };
+  if (iconInput) iconInput.addEventListener('input', syncPreview);
+  const pickBtn = $('#tIconPickBtn');
+  if (pickBtn) pickBtn.addEventListener('click', () => {
+    openIconPicker((val) => {
+      iconInput.value = val;
+      syncPreview();
+    });
+  });
+}
+
+// ---------- 图标库 ----------
+async function renderAdminIconLibrary() {
+  const grid = $('#adminIconGrid');
+  if (!grid) return;
+  grid.innerHTML = '<div class="col-span-full text-center text-white/40 text-xs py-4">加载中...</div>';
+  const list = await loadIconLibraryIfNeeded(true);
+  if (!list.length) {
+    grid.innerHTML = '<div class="col-span-full text-center text-white/40 text-xs py-6">图标库还是空的，点击右上角上传图标</div>';
+    return;
+  }
+  grid.innerHTML = list.map(it => `
+    <div class="icon-lib-tile" data-id="${it.id}" title="${escapeAttr(it.name)}">
+      ${iconHTML(it.dataUrl)}
+      <button class="del-btn" data-act="del-icon" title="删除"><i class="ri-close-line"></i></button>
+    </div>
+  `).join('');
+  grid.querySelectorAll('.icon-lib-tile').forEach(tile => {
+    const id = Number(tile.dataset.id);
+    tile.querySelector('[data-act="del-icon"]').addEventListener('click', async (e) => {
+      e.stopPropagation();
+      if (!confirm('确定从图标库删除该图标吗？（已使用它的荣誉仍会保留该图）')) return;
+      try {
+        await adminDeleteIcon(id);
+        toast('已删除');
+        await renderAdminIconLibrary();
+      } catch (err) { toast(err.message || '删除失败'); }
+    });
+  });
+}
+
+// ---------- 图标选择器（通用）----------
+// 精选常用 RemixIcon 类名（用户可手填任意类名，这里只给快捷选择）
+const BUILTIN_ICONS = [
+  'ri-medal-fill','ri-medal-2-fill','ri-trophy-fill','ri-vip-crown-fill','ri-vip-crown-2-fill',
+  'ri-vip-diamond-fill','ri-star-fill','ri-star-smile-fill','ri-shield-star-fill','ri-shield-check-fill',
+  'ri-shield-flash-fill','ri-shield-cross-fill','ri-fire-fill','ri-flashlight-fill','ri-magic-fill',
+  'ri-sparkling-fill','ri-heart-fill','ri-heart-3-fill','ri-thumb-up-fill','ri-award-fill',
+  'ri-gift-fill','ri-gift-2-fill','ri-rocket-2-fill','ri-flag-fill','ri-flag-2-fill',
+  'ri-bookmark-fill','ri-focus-3-line','ri-sword-fill','ri-boxing-fill','ri-gamepad-fill',
+  'ri-ghost-smile-fill','ri-robot-fill','ri-bug-fill','ri-compasses-2-fill','ri-palette-fill',
+  'ri-paint-brush-fill','ri-book-2-fill','ri-bulb-fill','ri-lightbulb-flash-fill','ri-tools-fill',
+  'ri-hammer-fill','ri-settings-3-fill','ri-code-s-slash-fill','ri-computer-fill','ri-cloud-fill',
+  'ri-plant-fill','ri-leaf-fill','ri-sun-fill','ri-moon-fill','ri-flower-fill',
+  'ri-cake-3-fill','ri-run-fill','ri-walk-fill','ri-emotion-laugh-fill','ri-user-star-fill'
+];
+
+function bindIconPickerEvents() {
+  const search = $('#iconPickerSearch');
+  if (search) {
+    search.addEventListener('input', () => renderIconPickerBuiltin(search.value.trim().toLowerCase()));
+  }
+  const modal = $('#iconPickerModal');
+  if (modal) {
+    modal.addEventListener('click', (e) => {
+      if (e.target === modal) closeSimpleModal('iconPickerModal');
+    });
+  }
+}
+
+async function openIconPicker(onPick) {
+  state.iconPickerTarget = { onPick };
+  const search = $('#iconPickerSearch');
+  if (search) search.value = '';
+  renderIconPickerBuiltin('');
+  await renderIconPickerLib();
+  openSimpleModal('iconPickerModal');
+}
+
+function renderIconPickerBuiltin(filter = '') {
+  const box = $('#iconPickerBuiltin');
+  if (!box) return;
+  const list = filter
+    ? BUILTIN_ICONS.filter(n => n.toLowerCase().includes(filter))
+    : BUILTIN_ICONS;
+  box.innerHTML = list.map(n => `
+    <div class="icon-picker-tile" data-val="${escapeAttr(n)}" title="${escapeAttr(n)}">
+      <i class="${escapeAttr(n)}"></i>
+    </div>
+  `).join('');
+  box.querySelectorAll('.icon-picker-tile').forEach(t => {
+    t.addEventListener('click', () => applyIconPick(t.dataset.val));
+  });
+}
+
+async function renderIconPickerLib() {
+  const box = $('#iconPickerLib');
+  if (!box) return;
+  const list = await loadIconLibraryIfNeeded(true);
+  if (!list.length) {
+    box.innerHTML = '<div class="col-span-full text-white/40 text-xs py-2">暂无自定义图标，管理员可在"模板&图标"中上传</div>';
+    return;
+  }
+  box.innerHTML = list.map(it => `
+    <div class="icon-picker-tile" data-val="${escapeAttr(it.dataUrl)}" title="${escapeAttr(it.name || '自定义图标')}">
+      <img src="${escapeAttr(it.dataUrl)}" alt="" />
+    </div>
+  `).join('');
+  box.querySelectorAll('.icon-picker-tile').forEach(t => {
+    t.addEventListener('click', () => applyIconPick(t.dataset.val));
+  });
+}
+
+function applyIconPick(val) {
+  const target = state.iconPickerTarget;
+  if (target && typeof target.onPick === 'function') {
+    target.onPick(val);
+  }
+  closeSimpleModal('iconPickerModal');
+}
+
+// ---------- 批量发放 ----------
+function bindBatchGrantEvents() {
+  const btn = $('#batchGrantBtn');
+  if (btn) btn.addEventListener('click', () => openBatchGrantModal(null));
+  const m = $('#batchGrantModal');
+  if (m) m.addEventListener('click', (e) => { if (e.target === m) closeSimpleModal('batchGrantModal'); });
+  const tplSel = $('#bgTemplate');
+  if (tplSel) tplSel.addEventListener('change', () => applyBatchTemplate(Number(tplSel.value) || 0));
+  const iconPickBtn = $('#bgIconPickBtn');
+  const iconInput = $('#bgIcon');
+  const iconPreview = $('#bgIconPreview');
+  const syncPreview = () => { if (iconPreview) iconPreview.innerHTML = iconHTML((iconInput.value || '').trim() || 'ri-medal-fill'); };
+  if (iconInput) iconInput.addEventListener('input', syncPreview);
+  if (iconPickBtn) iconPickBtn.addEventListener('click', () => {
+    openIconPicker((val) => { iconInput.value = val; syncPreview(); });
+  });
+  const search = $('#bgPersonSearch');
+  if (search) search.addEventListener('input', () => {
+    state.batchGrant.search = search.value.trim().toLowerCase();
+    renderBatchPersonList();
+  });
+  $('#bgSelectAll') && $('#bgSelectAll').addEventListener('click', () => {
+    filteredBatchPersons().forEach(p => state.batchGrant.picked.add(p.engName));
+    renderBatchPersonList();
+  });
+  $('#bgSelectNone') && $('#bgSelectNone').addEventListener('click', () => {
+    state.batchGrant.picked.clear();
+    renderBatchPersonList();
+  });
+  $('#doBatchGrantBtn') && $('#doBatchGrantBtn').addEventListener('click', doBatchGrant);
+}
+
+async function openBatchGrantModal(presetTpl = null) {
+  // 加载模板
+  const tpls = await loadTemplatesIfNeeded(true);
+  const tplSel = $('#bgTemplate');
+  if (tplSel) {
+    tplSel.innerHTML = '<option value="">-- 不使用模板，手动填写 --</option>' +
+      tpls.map(t => `<option value="${t.id}">${escapeHtml(t.name)} · ${(QUALITY[t.quality] || QUALITY.common).name}</option>`).join('');
+  }
+  // 重置表单
+  $('#bgName').value = '';
+  $('#bgDate').value = new Date().toISOString().slice(0, 10);
+  $('#bgQuality').value = 'common';
+  $('#bgCategory').value = 'achievement';
+  $('#bgIcon').value = 'ri-medal-fill';
+  $('#bgIconPreview').innerHTML = iconHTML('ri-medal-fill');
+  $('#bgDesc').value = '';
+  $('#bgReason').value = '';
+  state.batchGrant.picked = new Set();
+  state.batchGrant.search = '';
+  if ($('#bgPersonSearch')) $('#bgPersonSearch').value = '';
+  if (presetTpl) {
+    tplSel.value = String(presetTpl.id || '');
+    applyBatchTemplate(Number(presetTpl.id || 0));
+  }
+  renderBatchPersonList();
+  openSimpleModal('batchGrantModal');
+}
+
+function applyBatchTemplate(tplId) {
+  if (!tplId) return;
+  const tpl = state.honorTemplates.find(t => t.id === tplId);
+  if (!tpl) return;
+  $('#bgName').value = tpl.name || '';
+  $('#bgQuality').value = tpl.quality || 'common';
+  $('#bgCategory').value = tpl.category || 'achievement';
+  $('#bgIcon').value = tpl.icon || 'ri-medal-fill';
+  $('#bgIconPreview').innerHTML = iconHTML(tpl.icon || 'ri-medal-fill');
+  $('#bgDesc').value = tpl.description || '';
+  $('#bgReason').value = tpl.reason || '';
+}
+
+function filteredBatchPersons() {
+  const kw = state.batchGrant.search;
+  if (!kw) return people;
+  return people.filter(p => {
+    const s = `${p.name} ${p.engName} ${p.dept}`.toLowerCase();
+    return s.includes(kw);
+  });
+}
+
+function renderBatchPersonList() {
+  const box = $('#bgPersonList');
+  if (!box) return;
+  const list = filteredBatchPersons();
+  if (!list.length) {
+    box.innerHTML = '<div class="col-span-full text-center text-white/40 text-xs py-4">无匹配策划</div>';
+    $('#bgPersonCount').textContent = state.batchGrant.picked.size;
+    return;
+  }
+  box.innerHTML = list.map(p => {
+    const checked = state.batchGrant.picked.has(p.engName);
+    return `
+      <label class="bg-person-item ${checked ? 'checked' : ''}" data-eng="${escapeAttr(p.engName)}">
+        <input type="checkbox" ${checked ? 'checked' : ''} />
+        <div class="min-w-0 flex-1">
+          <div class="text-sm truncate">${escapeHtml(p.name)}</div>
+          <div class="eng truncate">${escapeHtml(p.dept)} · ${escapeHtml(p.engName)}</div>
+        </div>
+      </label>
+    `;
+  }).join('');
+  box.querySelectorAll('.bg-person-item').forEach(el => {
+    const eng = el.dataset.eng;
+    el.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (state.batchGrant.picked.has(eng)) state.batchGrant.picked.delete(eng);
+      else state.batchGrant.picked.add(eng);
+      el.classList.toggle('checked', state.batchGrant.picked.has(eng));
+      const cb = el.querySelector('input[type="checkbox"]');
+      if (cb) cb.checked = state.batchGrant.picked.has(eng);
+      $('#bgPersonCount').textContent = state.batchGrant.picked.size;
+    });
+  });
+  $('#bgPersonCount').textContent = state.batchGrant.picked.size;
+}
+
+async function doBatchGrant() {
+  if (!isAdmin()) { toast('需要管理员权限'); return; }
+  const picked = Array.from(state.batchGrant.picked);
+  if (!picked.length) { toast('请至少勾选一位策划'); return; }
+  const name = ($('#bgName').value || '').trim();
+  if (!name) { toast('荣誉名称必填'); return; }
+  const payload = {
+    templateId: Number($('#bgTemplate').value) || null,
+    name,
+    quality: $('#bgQuality').value,
+    category: $('#bgCategory').value,
+    icon: ($('#bgIcon').value || '').trim() || 'ri-medal-fill',
+    date: $('#bgDate').value || new Date().toISOString().slice(0, 10),
+    description: ($('#bgDesc').value || '').trim(),
+    reason: ($('#bgReason').value || '').trim(),
+    personEngNames: picked
+  };
+  const btn = $('#doBatchGrantBtn');
+  if (btn) btn.disabled = true;
+  try {
+    const res = await adminBatchGrantHonor(payload);
+    const okCount = (res && res.total) || 0;
+    const failCount = (res && res.failed && res.failed.length) || 0;
+    closeSimpleModal('batchGrantModal');
+    toast(`批量发放完成：成功 ${okCount}${failCount ? `，失败 ${failCount}` : ''} ✨`);
+    await loadAllPersons();
+    renderAdmin();
+  } catch (e) {
+    toast(e.message || '批量发放失败');
+  } finally {
+    if (btn) btn.disabled = false;
+  }
 }
 
 document.addEventListener('DOMContentLoaded', init);

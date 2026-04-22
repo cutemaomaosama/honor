@@ -5,10 +5,10 @@
 
 // ========= 品质定义 =========
 export const QUALITY = {
-  legend:  { name: '传说', color: '#f5c242', border: '#ff4d4d', score: 100 },
-  epic:    { name: '史诗', color: '#b266ff', border: '#b266ff', score: 60 },
-  rare:    { name: '稀有', color: '#4da6ff', border: '#4da6ff', score: 30 },
-  common:  { name: '普通', color: '#9ca3af', border: '#9ca3af', score: 10 }
+  legend:  { name: '传奇', color: '#f5c242', border: '#ff4d4d', score: 100 },
+  epic:    { name: '荣耀', color: '#b266ff', border: '#b266ff', score: 60 },
+  rare:    { name: '绝世', color: '#4da6ff', border: '#4da6ff', score: 30 },
+  common:  { name: '非凡', color: '#9ca3af', border: '#9ca3af', score: 10 }
 };
 
 // ========= 荣誉分类 =========
@@ -17,7 +17,8 @@ export const CATEGORY = {
   popularity:  '人气奖',
   team:        '团队奖',
   achievement: '成就',
-  innovation:  '创新奖'
+  innovation:  '创新奖',
+  contest:     '赛事奖'
 };
 
 // ========= 策划列表（运行时从后端加载） =========
@@ -466,4 +467,39 @@ export async function postMessage(content, target = '') {
 
 export async function deleteMessage(id) {
   return apiJson('/api/messages/' + id, { method: 'DELETE' });
+}
+
+// ========= 荣誉模板 =========
+export async function fetchHonorTemplates() {
+  return apiJson('/api/honor-templates?_t=' + Date.now());
+}
+
+export async function adminCreateHonorTemplate(payload) {
+  return apiJson('/api/admin/honor-template', { method: 'POST', body: payload });
+}
+
+export async function adminUpdateHonorTemplate(id, payload) {
+  return apiJson('/api/admin/honor-template/' + id, { method: 'POST', body: payload });
+}
+
+export async function adminDeleteHonorTemplate(id) {
+  return apiJson('/api/admin/honor-template/' + id, { method: 'DELETE' });
+}
+
+// 批量发放荣誉（管理员）
+export async function adminBatchGrantHonor(payload) {
+  return apiJson('/api/admin/honor/batch-grant', { method: 'POST', body: payload });
+}
+
+// ========= 图标库 =========
+export async function fetchIconLibrary() {
+  return apiJson('/api/icon-library?_t=' + Date.now());
+}
+
+export async function adminUploadIcon(dataUrl, name = '') {
+  return apiJson('/api/admin/icon-library', { method: 'POST', body: { dataUrl, name } });
+}
+
+export async function adminDeleteIcon(id) {
+  return apiJson('/api/admin/icon-library/' + id, { method: 'DELETE' });
 }

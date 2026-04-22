@@ -138,6 +138,31 @@ def ensure_tables():
         # 兼容旧库：尝试加字段（忽略已存在错误）
         "ALTER TABLE messages ADD COLUMN target_eng_name VARCHAR(64) DEFAULT '' AFTER author_name",
         "ALTER TABLE messages ADD INDEX idx_target (target_eng_name)",
+        # 荣誉模板（管理员可保存复用，支持批量发放）
+        """
+        CREATE TABLE IF NOT EXISTS honor_templates (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          name VARCHAR(128) NOT NULL,
+          quality VARCHAR(16) NOT NULL DEFAULT 'common',
+          category VARCHAR(32) NOT NULL DEFAULT 'achievement',
+          icon VARCHAR(255) DEFAULT 'ri-medal-fill',
+          description TEXT,
+          reason TEXT,
+          created_by VARCHAR(64) DEFAULT '',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+          updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+        ) DEFAULT CHARSET=utf8mb4;
+        """,
+        # 图标库（管理员上传自定义图标图片，存储为 dataURL 供前端直接渲染）
+        """
+        CREATE TABLE IF NOT EXISTS icon_library (
+          id INT AUTO_INCREMENT PRIMARY KEY,
+          name VARCHAR(64) NOT NULL,
+          data_url MEDIUMTEXT NOT NULL,
+          created_by VARCHAR(64) DEFAULT '',
+          created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        ) DEFAULT CHARSET=utf8mb4;
+        """,
     ]
     try:
         with get_conn() as conn:
@@ -1463,6 +1488,259 @@ def delete_message(
             if user["role"] != "admin" and row["author"] != user["username"]:
                 raise HTTPException(status_code=403, detail="没有权限删除")
             cur.execute("DELETE FROM messages WHERE id=%s", (msg_id,))
+    return {"ok": True}
+
+
+# ===== 荣誉模板 & 批量发放 =====
+class HonorTemplateIn(BaseModel):
+    name: str
+    quality: str = "common"
+    category: str = "achievement"
+    icon: Optional[str] = "ri-medal-fill"
+    description: Optional[str] = ""
+    reason: Optional[str] = ""
+
+
+class HonorTemplateUpdateIn(BaseModel):
+    name: Optional[str] = None
+    quality: Optional[str] = None
+    category: Optional[str] = None
+    icon: Optional[str] = None
+    description: Optional[str] = None
+    reason: Optional[str] = None
+
+
+class HonorBatchGrantIn(BaseModel):
+    templateId: Optional[int] = None
+    # 或直接传入临时模板
+    name: Optional[str] = None
+    quality: Optional[str] = None
+    category: Optional[str] = None
+    icon: Optional[str] = None
+    description: Optional[str] = None
+    reason: Optional[str] = None
+    date: Optional[str] = ""
+    personEngNames: List[str] = Field(default_factory=list)
+
+
+def _template_row_to_dict(r):
+    return {
+        "id": r["id"],
+        "name": r["name"],
+        "quality": r["quality"],
+        "category": r["category"],
+        "icon": r.get("icon") or "ri-medal-fill",
+        "description": r.get("description") or "",
+        "reason": r.get("reason") or "",
+        "createdBy": r.get("created_by") or "",
+    }
+
+
+@app.get("/api/honor-templates")
+def list_honor_templates():
+    """所有登录用户均可查看（便于发放时选择）"""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, name, quality, category, icon, description, reason, created_by "
+                "FROM honor_templates ORDER BY id DESC"
+            )
+            rows = cur.fetchall() or []
+    return [_template_row_to_dict(r) for r in rows]
+
+
+@app.post("/api/admin/honor-template")
+def admin_create_honor_template(
+    data: HonorTemplateIn,
+    authorization: Optional[str] = Header(None),
+    token: Optional[str] = Query(None),
+):
+    user = _require_admin(authorization, token)
+    if not data.name:
+        raise HTTPException(status_code=400, detail="模板名称必填")
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO honor_templates (name, quality, category, icon, description, reason, created_by) "
+                "VALUES (%s,%s,%s,%s,%s,%s,%s)",
+                (
+                    data.name,
+                    data.quality or "common",
+                    data.category or "achievement",
+                    data.icon or "ri-medal-fill",
+                    data.description or "",
+                    data.reason or "",
+                    user["username"],
+                ),
+            )
+            new_id = cur.lastrowid
+    return {"ok": True, "id": new_id}
+
+
+@app.post("/api/admin/honor-template/{tpl_id}")
+def admin_update_honor_template(
+    tpl_id: int,
+    data: HonorTemplateUpdateIn,
+    authorization: Optional[str] = Header(None),
+    token: Optional[str] = Query(None),
+):
+    _require_admin(authorization, token)
+    fields, values = [], []
+    for col, attr in [
+        ("name", "name"), ("quality", "quality"), ("category", "category"),
+        ("icon", "icon"), ("description", "description"), ("reason", "reason"),
+    ]:
+        val = getattr(data, attr)
+        if val is not None:
+            fields.append(f"{col}=%s")
+            values.append(val)
+    if not fields:
+        return {"ok": True}
+    values.append(tpl_id)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(f"UPDATE honor_templates SET {', '.join(fields)} WHERE id=%s", values)
+    return {"ok": True}
+
+
+@app.delete("/api/admin/honor-template/{tpl_id}")
+def admin_delete_honor_template(
+    tpl_id: int,
+    authorization: Optional[str] = Header(None),
+    token: Optional[str] = Query(None),
+):
+    _require_admin(authorization, token)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM honor_templates WHERE id=%s", (tpl_id,))
+    return {"ok": True}
+
+
+@app.post("/api/admin/honor/batch-grant")
+def admin_batch_grant_honor(
+    data: HonorBatchGrantIn,
+    authorization: Optional[str] = Header(None),
+    token: Optional[str] = Query(None),
+):
+    """批量发放：根据模板（或 inline 字段）一次给多位策划发放一条同样的荣誉"""
+    _require_admin(authorization, token)
+    if not data.personEngNames:
+        raise HTTPException(status_code=400, detail="请选择至少一位策划")
+
+    tpl = None
+    if data.templateId:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id, name, quality, category, icon, description, reason FROM honor_templates WHERE id=%s",
+                    (data.templateId,),
+                )
+                tpl = cur.fetchone()
+        if not tpl:
+            raise HTTPException(status_code=404, detail="模板不存在")
+
+    name = (data.name or (tpl["name"] if tpl else "")).strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="荣誉名称必填")
+    quality = data.quality or (tpl["quality"] if tpl else "common")
+    category = data.category or (tpl["category"] if tpl else "achievement")
+    icon = data.icon or (tpl.get("icon") if tpl else "ri-medal-fill") or "ri-medal-fill"
+    description = data.description if data.description is not None else (tpl.get("description") if tpl else "")
+    reason = data.reason if data.reason is not None else (tpl.get("reason") if tpl else "")
+    date_str = (data.date or datetime.now().strftime("%Y-%m-%d")).strip()
+
+    granted, failed = [], []
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            # 先取出已存在的策划集合
+            eng_list = [e.strip() for e in data.personEngNames if e and e.strip()]
+            if not eng_list:
+                raise HTTPException(status_code=400, detail="请选择至少一位策划")
+            placeholders = ",".join(["%s"] * len(eng_list))
+            cur.execute(
+                f"SELECT eng_name FROM persons WHERE eng_name IN ({placeholders})",
+                eng_list,
+            )
+            exist_set = {r["eng_name"] for r in (cur.fetchall() or [])}
+            for eng in eng_list:
+                if eng not in exist_set:
+                    failed.append({"engName": eng, "reason": "策划不存在"})
+                    continue
+                cur.execute(
+                    "INSERT INTO honors (person_eng_name, name, quality, category, icon, date, description, reason) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+                    (eng, name, quality, category, icon, date_str, description or "", reason or ""),
+                )
+                granted.append({"engName": eng, "id": cur.lastrowid})
+    return {"ok": True, "granted": granted, "failed": failed, "total": len(granted)}
+
+
+# ===== 图标库 =====
+class IconIn(BaseModel):
+    name: Optional[str] = ""
+    dataUrl: str  # data:image/...;base64,....
+
+
+def _icon_row_to_dict(r):
+    return {
+        "id": r["id"],
+        "name": r.get("name") or "",
+        "dataUrl": r.get("data_url") or "",
+        "createdBy": r.get("created_by") or "",
+    }
+
+
+@app.get("/api/icon-library")
+def list_icon_library():
+    """所有登录用户均可浏览图标库（用于创建/发放荣誉时选图）"""
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "SELECT id, name, data_url, created_by FROM icon_library ORDER BY id DESC"
+            )
+            rows = cur.fetchall() or []
+    return [_icon_row_to_dict(r) for r in rows]
+
+
+@app.post("/api/admin/icon-library")
+def admin_upload_icon(
+    data: IconIn,
+    authorization: Optional[str] = Header(None),
+    token: Optional[str] = Query(None),
+):
+    user = _require_admin(authorization, token)
+    du = (data.dataUrl or "").strip()
+    m = re.match(r"^data:image/(png|jpe?g|webp|gif|svg\+xml);base64,([A-Za-z0-9+/=]+)$", du)
+    if not m:
+        raise HTTPException(status_code=400, detail="图标格式不支持（png/jpg/webp/gif/svg）")
+    # 校验大小（解码后不超过 500KB）
+    try:
+        raw = base64.b64decode(m.group(2))
+    except Exception:
+        raise HTTPException(status_code=400, detail="图标数据解析失败")
+    if len(raw) > 500 * 1024:
+        raise HTTPException(status_code=400, detail="图标大小不能超过 500KB")
+    name = (data.name or "").strip()[:64]
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute(
+                "INSERT INTO icon_library (name, data_url, created_by) VALUES (%s, %s, %s)",
+                (name, du, user["username"]),
+            )
+            new_id = cur.lastrowid
+    return {"ok": True, "id": new_id, "name": name, "dataUrl": du}
+
+
+@app.delete("/api/admin/icon-library/{icon_id}")
+def admin_delete_icon(
+    icon_id: int,
+    authorization: Optional[str] = Header(None),
+    token: Optional[str] = Query(None),
+):
+    _require_admin(authorization, token)
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            cur.execute("DELETE FROM icon_library WHERE id=%s", (icon_id,))
     return {"ok": True}
 
 
