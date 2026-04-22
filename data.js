@@ -87,8 +87,28 @@ async function apiJson(url, options = {}) {
     try { data = JSON.parse(text); } catch { data = null; }
   }
   if (!res.ok) {
-    const msg = (data && (data.detail || data.message)) || (/<title>([^<]+)<\/title>/i.test(text) ? RegExp.$1 : '') || ('请求失败: ' + res.status);
-    const err = new Error(msg);
+    let msg = '';
+    const rawDetail = data && (data.detail || data.message);
+    if (Array.isArray(rawDetail)) {
+      // FastAPI 422 校验错误 detail 为数组
+      msg = rawDetail.map(d => {
+        if (typeof d === 'string') return d;
+        if (d && typeof d === 'object') {
+          const loc = Array.isArray(d.loc) ? d.loc.join('.') : '';
+          return (loc ? (loc + ': ') : '') + (d.msg || JSON.stringify(d));
+        }
+        return String(d);
+      }).join('；');
+    } else if (rawDetail && typeof rawDetail === 'object') {
+      msg = rawDetail.msg || JSON.stringify(rawDetail);
+    } else if (typeof rawDetail === 'string') {
+      msg = rawDetail;
+    } else if (/<title>([^<]+)<\/title>/i.test(text)) {
+      msg = RegExp.$1;
+    } else {
+      msg = '请求失败: ' + res.status;
+    }
+    const err = new Error(String(msg || ('请求失败: ' + res.status)));
     err.status = res.status;
     throw err;
   }

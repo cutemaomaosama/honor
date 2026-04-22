@@ -852,7 +852,14 @@ function doSaveQuote() {
 let toastTimer = null;
 function toast(msg) {
   const t = $('#toast');
-  t.textContent = msg;
+  let text = '';
+  if (msg == null) text = '';
+  else if (typeof msg === 'string') text = msg;
+  else if (msg instanceof Error) text = msg.message || String(msg);
+  else {
+    try { text = JSON.stringify(msg); } catch { text = String(msg); }
+  }
+  t.textContent = text;
   t.classList.remove('hidden');
   clearTimeout(toastTimer);
   toastTimer = setTimeout(() => t.classList.add('hidden'), 2200);
@@ -1956,7 +1963,8 @@ async function renderAdminTemplates() {
             await renderAdminTemplates();
           } catch (e) { toast(e.message || '删除失败'); }
         } else if (act === 'grant') {
-          openBatchGrantModal(tpl);
+          try { await openBatchGrantModal(tpl); }
+          catch (e) { console.error('[batchGrant] open from template failed:', e); toast(e && e.message ? e.message : '打开批量发放失败'); }
         }
       });
     });
@@ -2129,7 +2137,10 @@ function applyIconPick(val) {
 // ---------- 批量发放 ----------
 function bindBatchGrantEvents() {
   const btn = $('#batchGrantBtn');
-  if (btn) btn.addEventListener('click', () => openBatchGrantModal(null));
+  if (btn) btn.addEventListener('click', async () => {
+    try { await openBatchGrantModal(null); }
+    catch (e) { console.error('[batchGrant] open failed:', e); toast(e && e.message ? e.message : '打开批量发放失败'); }
+  });
   const m = $('#batchGrantModal');
   if (m) m.addEventListener('click', (e) => { if (e.target === m) closeSimpleModal('batchGrantModal'); });
   const tplSel = $('#bgTemplate');
@@ -2160,25 +2171,33 @@ function bindBatchGrantEvents() {
 
 async function openBatchGrantModal(presetTpl = null) {
   // 加载模板
-  const tpls = await loadTemplatesIfNeeded(true);
+  let tpls = [];
+  try {
+    tpls = await loadTemplatesIfNeeded(true);
+  } catch (e) {
+    console.warn('[batchGrant] loadTemplates failed:', e);
+    tpls = [];
+  }
   const tplSel = $('#bgTemplate');
   if (tplSel) {
     tplSel.innerHTML = '<option value="">-- 不使用模板，手动填写 --</option>' +
-      tpls.map(t => `<option value="${t.id}">${escapeHtml(t.name)} · ${(QUALITY[t.quality] || QUALITY.common).name}</option>`).join('');
+      (tpls || []).map(t => `<option value="${t.id}">${escapeHtml(t.name || '')} · ${(QUALITY[t.quality] || QUALITY.common).name}</option>`).join('');
   }
   // 重置表单
-  $('#bgName').value = '';
-  $('#bgDate').value = new Date().toISOString().slice(0, 10);
-  $('#bgQuality').value = 'common';
-  $('#bgCategory').value = 'achievement';
-  $('#bgIcon').value = 'ri-medal-fill';
-  $('#bgIconPreview').innerHTML = iconHTML('ri-medal-fill');
-  $('#bgDesc').value = '';
-  $('#bgReason').value = '';
+  const setVal = (id, v) => { const el = $('#' + id); if (el) el.value = v; };
+  setVal('bgName', '');
+  setVal('bgDate', new Date().toISOString().slice(0, 10));
+  setVal('bgQuality', 'common');
+  setVal('bgCategory', 'achievement');
+  setVal('bgIcon', 'ri-medal-fill');
+  const prev = $('#bgIconPreview');
+  if (prev) prev.innerHTML = iconHTML('ri-medal-fill');
+  setVal('bgDesc', '');
+  setVal('bgReason', '');
   state.batchGrant.picked = new Set();
   state.batchGrant.search = '';
   if ($('#bgPersonSearch')) $('#bgPersonSearch').value = '';
-  if (presetTpl) {
+  if (presetTpl && tplSel) {
     tplSel.value = String(presetTpl.id || '');
     applyBatchTemplate(Number(presetTpl.id || 0));
   }
@@ -2266,13 +2285,21 @@ async function doBatchGrant() {
   try {
     const res = await adminBatchGrantHonor(payload);
     const okCount = (res && res.total) || 0;
-    const failCount = (res && res.failed && res.failed.length) || 0;
+    const failed = (res && res.failed) || [];
+    const failCount = failed.length;
     closeSimpleModal('batchGrantModal');
-    toast(`批量发放完成：成功 ${okCount}${failCount ? `，失败 ${failCount}` : ''} ✨`);
+    if (failCount) {
+      toast(`批量发放完成：成功 ${okCount}，失败 ${failCount}`);
+      console.warn('[batchGrant] failed details:', failed);
+    } else {
+      toast(`批量发放完成：成功 ${okCount} ✨`);
+    }
     await loadAllPersons();
     renderAdmin();
   } catch (e) {
-    toast(e.message || '批量发放失败');
+    console.error('[batchGrant] submit failed:', e, 'payload:', payload);
+    const errMsg = (e && typeof e.message === 'string' && e.message) ? e.message : '批量发放失败';
+    toast(errMsg);
   } finally {
     if (btn) btn.disabled = false;
   }
