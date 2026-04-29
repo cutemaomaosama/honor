@@ -1013,6 +1013,65 @@ def admin_create_honor(
     return {"ok": True, "id": new_id}
 
 
+@app.post("/api/admin/honor/batch-grant")
+def admin_batch_grant_honor(
+    data: HonorBatchGrantIn,
+    authorization: Optional[str] = Header(None),
+    token: Optional[str] = Query(None),
+):
+    """批量发放：根据模板（或 inline 字段）一次给多位策划发放一条同样的荣誉"""
+    _require_admin(authorization, token)
+    if not data.personEngNames:
+        raise HTTPException(status_code=400, detail="请选择至少一位策划")
+
+    tpl = None
+    if data.templateId:
+        with get_conn() as conn:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT id, name, quality, category, icon, description, reason FROM honor_templates WHERE id=%s",
+                    (data.templateId,),
+                )
+                tpl = cur.fetchone()
+        if not tpl:
+            raise HTTPException(status_code=404, detail="模板不存在")
+
+    name = (data.name or (tpl["name"] if tpl else "")).strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="荣誉名称必填")
+    quality = data.quality or (tpl["quality"] if tpl else "common")
+    category = data.category or (tpl["category"] if tpl else "achievement")
+    icon = data.icon or (tpl.get("icon") if tpl else "ri-medal-fill") or "ri-medal-fill"
+    description = data.description if data.description is not None else (tpl.get("description") if tpl else "")
+    reason = data.reason if data.reason is not None else (tpl.get("reason") if tpl else "")
+    date_str = (data.date or datetime.now().strftime("%Y-%m-%d")).strip()
+
+    granted, failed = [], []
+    with get_conn() as conn:
+        with conn.cursor() as cur:
+            # 先取出已存在的策划集合
+            eng_list = [e.strip() for e in data.personEngNames if e and e.strip()]
+            if not eng_list:
+                raise HTTPException(status_code=400, detail="请选择至少一位策划")
+            placeholders = ",".join(["%s"] * len(eng_list))
+            cur.execute(
+                f"SELECT eng_name FROM persons WHERE eng_name IN ({placeholders})",
+                eng_list,
+            )
+            exist_set = {r["eng_name"] for r in (cur.fetchall() or [])}
+            for eng in eng_list:
+                if eng not in exist_set:
+                    failed.append({"engName": eng, "reason": "策划不存在"})
+                    continue
+                cur.execute(
+                    "INSERT INTO honors (person_eng_name, name, quality, category, icon, date, description, reason) "
+                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
+                    (eng, name, quality, category, icon, date_str, description or "", reason or ""),
+                )
+                granted.append({"engName": eng, "id": cur.lastrowid})
+    return {"ok": True, "granted": granted, "failed": failed, "total": len(granted)}
+
+
 @app.post("/api/admin/honor/{honor_id}")
 def admin_update_honor(
     honor_id: int,
@@ -1614,65 +1673,6 @@ def admin_delete_honor_template(
         with conn.cursor() as cur:
             cur.execute("DELETE FROM honor_templates WHERE id=%s", (tpl_id,))
     return {"ok": True}
-
-
-@app.post("/api/admin/honor/batch-grant")
-def admin_batch_grant_honor(
-    data: HonorBatchGrantIn,
-    authorization: Optional[str] = Header(None),
-    token: Optional[str] = Query(None),
-):
-    """批量发放：根据模板（或 inline 字段）一次给多位策划发放一条同样的荣誉"""
-    _require_admin(authorization, token)
-    if not data.personEngNames:
-        raise HTTPException(status_code=400, detail="请选择至少一位策划")
-
-    tpl = None
-    if data.templateId:
-        with get_conn() as conn:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT id, name, quality, category, icon, description, reason FROM honor_templates WHERE id=%s",
-                    (data.templateId,),
-                )
-                tpl = cur.fetchone()
-        if not tpl:
-            raise HTTPException(status_code=404, detail="模板不存在")
-
-    name = (data.name or (tpl["name"] if tpl else "")).strip()
-    if not name:
-        raise HTTPException(status_code=400, detail="荣誉名称必填")
-    quality = data.quality or (tpl["quality"] if tpl else "common")
-    category = data.category or (tpl["category"] if tpl else "achievement")
-    icon = data.icon or (tpl.get("icon") if tpl else "ri-medal-fill") or "ri-medal-fill"
-    description = data.description if data.description is not None else (tpl.get("description") if tpl else "")
-    reason = data.reason if data.reason is not None else (tpl.get("reason") if tpl else "")
-    date_str = (data.date or datetime.now().strftime("%Y-%m-%d")).strip()
-
-    granted, failed = [], []
-    with get_conn() as conn:
-        with conn.cursor() as cur:
-            # 先取出已存在的策划集合
-            eng_list = [e.strip() for e in data.personEngNames if e and e.strip()]
-            if not eng_list:
-                raise HTTPException(status_code=400, detail="请选择至少一位策划")
-            placeholders = ",".join(["%s"] * len(eng_list))
-            cur.execute(
-                f"SELECT eng_name FROM persons WHERE eng_name IN ({placeholders})",
-                eng_list,
-            )
-            exist_set = {r["eng_name"] for r in (cur.fetchall() or [])}
-            for eng in eng_list:
-                if eng not in exist_set:
-                    failed.append({"engName": eng, "reason": "策划不存在"})
-                    continue
-                cur.execute(
-                    "INSERT INTO honors (person_eng_name, name, quality, category, icon, date, description, reason) "
-                    "VALUES (%s,%s,%s,%s,%s,%s,%s,%s)",
-                    (eng, name, quality, category, icon, date_str, description or "", reason or ""),
-                )
-                granted.append({"engName": eng, "id": cur.lastrowid})
-    return {"ok": True, "granted": granted, "failed": failed, "total": len(granted)}
 
 
 # ===== 图标库 =====
